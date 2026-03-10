@@ -547,16 +547,36 @@
         const lowestRaw = Number(stats?.lowest_price?.value ?? 0);
         const rawCurrency = stats?.median_price?.currency || stats?.lowest_price?.currency || 'AUD';
         const medianAud = toAud(medianRaw, rawCurrency);
-        const lowestAud = toAud(lowestRaw, rawCurrency);
-        const buyPrice = getNumber('buyPrice');
-        const demand = calcDemand(stats, release);
-        const strategy = buildListingStrategy(medianAud, lowestAud, demand.label);
-        const suggestedSellPrice = strategy.balanced;
-        const suggestedMath = calculateProfitFromSellPrice(suggestedSellPrice);
-        const quickMath = calculateProfitFromSellPrice(strategy.quickSale);
-        const maxMath = calculateProfitFromSellPrice(strategy.maxProfit);
-        const profit = suggestedMath.profit;
-        const rec = scoreRecommendation(profit, demand.label, true);
+const lowestAud = toAud(lowestRaw, rawCurrency);
+const usableMarketPriceAud = medianAud > 0 ? medianAud : (lowestAud > 0 ? lowestAud : 0);
+const buyPrice = getNumber('buyPrice');
+const demand = calcDemand(stats, release);
+
+const hasMarketData = usableMarketPriceAud > 0;
+
+const strategy = hasMarketData
+  ? buildListingStrategy(usableMarketPriceAud, lowestAud, demand.label)
+  : { quickSale: 0, balanced: 0, maxProfit: 0 };
+
+const suggestedSellPrice = strategy.balanced;
+
+const suggestedMath = hasMarketData
+  ? calculateProfitFromSellPrice(suggestedSellPrice)
+  : { discogsCost: 0, paypalCost: 0, profit: null };
+
+const quickMath = hasMarketData
+  ? calculateProfitFromSellPrice(strategy.quickSale)
+  : { profit: null };
+
+const maxMath = hasMarketData
+  ? calculateProfitFromSellPrice(strategy.maxProfit)
+  : { profit: null };
+
+const profit = suggestedMath.profit;
+
+const rec = hasMarketData
+  ? scoreRecommendation(profit, demand.label, true)
+  : { label: 'No market data', cls: 'skip' };
         const title = [release.artists_sort || '', release.title || 'Untitled release'].filter(Boolean).join(' – ');
 
         selectedAnalysis = {
