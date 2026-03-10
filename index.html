@@ -171,6 +171,18 @@
       transition: opacity 0.35s ease;
       pointer-events: none;
     }
+    #settingsPanel {
+      overflow: hidden;
+      max-height: 0;
+      opacity: 0;
+      transition: max-height 0.3s ease, opacity 0.25s ease, margin-top 0.25s ease;
+      margin-top: 0;
+    }
+    #settingsPanel.open {
+      max-height: 1000px;
+      opacity: 1;
+      margin-top: 12px;
+    }
   </style>
 </head>
 <body>
@@ -184,7 +196,7 @@
         </div>
         <button type="button" class="secondary" id="settingsToggle" onclick="toggleSettings()" aria-expanded="false" aria-controls="settingsPanel">▼ Settings</button>
       </div>
-      <div id="settingsPanel" style="display: none; overflow: hidden; margin-top: 12px;">
+      <div id="settingsPanel">
         <div class="grid">
           <div>
             <label for="token">Discogs user token (optional but recommended)</label>
@@ -297,10 +309,21 @@
     function toggleSettings() {
       const panel = getEl('settingsPanel');
       const button = getEl('settingsToggle');
-      const isOpen = panel.style.display !== 'none';
-      panel.style.display = isOpen ? 'none' : 'block';
+      const isOpen = panel.classList.contains('open');
+      panel.classList.toggle('open', !isOpen);
       button.innerText = isOpen ? '▼ Settings' : '▲ Settings';
       button.setAttribute('aria-expanded', String(!isOpen));
+    }
+
+    function openDiscogsUrl(url) {
+      if (!url) return;
+      window.open(url, '_blank');
+    }
+
+    function showCandidateInDiscogs(index) {
+      const item = currentCandidates[index];
+      if (!item || !item.id) return;
+      openDiscogsUrl(`https://www.discogs.com/release/${item.id}`);
     }
 
     function getEl(id) {
@@ -514,7 +537,7 @@
           <div class="candidate">
             <div class="candidate-title">Selected release: ${escapeHtml(selectedAnalysis.title)}</div>
             <div class="candidate-meta">Candidate list collapsed to save scrolling.</div>
-            <div class="row"><button type="button" class="secondary" onclick="expandCandidates()">Show candidate list again</button></div>
+            <div class="row"><button type="button" class="secondary" onclick="expandCandidates()">Show candidate list again</button><button type="button" class="secondary" onclick="openDiscogsUrl(selectedAnalysis ? selectedAnalysis.discogsUrl : '')">Show in Discogs</button></div>
           </div>
         `;
         return;
@@ -529,7 +552,8 @@
             <div class="candidate-title">${escapeHtml(title)}</div>
             <div class="candidate-meta">${escapeHtml(meta)}</div>
             <div class="row">
-              <button type="button" onclick="selectCandidate(${index})">Use this release</button>
+              <button type="button" onclick="selectCandidate($1)">Use this release</button>
+              <button type="button" class="secondary" onclick="showCandidateInDiscogs($1)">Show in Discogs</button>
               <span class="small">Discogs ID: ${escapeHtml(item.id || '—')}</span>
             </div>
           </div>
@@ -614,6 +638,7 @@
         const rec = strategy.balanced > 0 ? scoreRecommendation(suggestedMath.profit, demand.label, true, formatCategory) : { label: 'No market data', cls: 'skip' };
         const title = [release.artists_sort || '', release.title || 'Untitled release'].filter(Boolean).join(' – ');
         selectedAnalysis = {
+          discogsUrl: `https://www.discogs.com/release/${item.id}`,
           id: item.id,
           title,
           barcode: getEl('barcode').value.trim(),
@@ -697,7 +722,8 @@
         <div class="stat"><span class="muted">Demand signal</span><strong>${escapeHtml(analysis.demand)}</strong></div>
         <div class="stat"><span class="muted">Demand ratio</span><strong>${Number.isFinite(analysis.demandRatio) ? analysis.demandRatio.toFixed(2) : '—'}</strong></div>
         <div class="row" style="margin-top: 14px;">
-          <button type="button" onclick="saveItem()">Save to Inventory</button>
+          <button type="button" onclick="saveItem()">Add to Inventory</button>
+          <button type="button" class="secondary" onclick="openDiscogsUrl(analysis.discogsUrl)">Show in Discogs</button>
           <button type="button" class="secondary" onclick="recalculateRecommendation()">Recalculate</button>
         </div>
       `;
@@ -748,19 +774,43 @@
       }
       area.innerHTML = `
         <table>
-          <thead><tr><th>Title</th><th>Format</th><th>Recommendation</th><th class="right">Profit</th></tr></thead>
+          <thead><tr><th>Title</th><th>Format</th><th>Recommendation</th><th class="right">Profit</th><th>Actions</th></tr></thead>
           <tbody>
-            ${items.map((item) => `
+            ${items.map((item, index) => `
               <tr>
                 <td>${escapeHtml(item.title)}</td>
                 <td>${escapeHtml(item.formatCategory || 'Other')}</td>
                 <td>${escapeHtml(item.recommendation)}</td>
                 <td class="right">${item.profit == null ? '—' : money(item.profit)}</td>
+                <td>
+                  <div class="row">
+                    <button type="button" class="secondary" onclick="openDiscogsUrl('${'${'}escapeHtml(item.discogsUrl || '')}')">Show</button>
+                    <button type="button" class="secondary" onclick="showListForSale(${index})">List for sale</button>
+                  </div>
+                </td>
               </tr>
             `).join('')}
           </tbody>
         </table>
       `;
+    }
+
+    function showListForSale(index) {
+      const items = loadInventory();
+      const item = items[index];
+      if (!item) return;
+      const mediaCondition = prompt('Media condition (example: Mint (M), Near Mint (NM or M-), Very Good Plus (VG+))', item.mediaCondition || 'Very Good Plus (VG+)');
+      if (mediaCondition == null) return;
+      const sleeveCondition = prompt('Sleeve condition (optional for formats with sleeves)', item.sleeveCondition || 'Very Good Plus (VG+)');
+      if (sleeveCondition == null) return;
+      const price = prompt('Listing price in AUD', item.suggestedSellPrice || item.quickSalePrice || '5.00');
+      if (price == null) return;
+      item.mediaCondition = mediaCondition;
+      item.sleeveCondition = sleeveCondition;
+      item.listPriceAud = price;
+      saveInventory(items);
+      renderInventory();
+      alert('Prepared listing details locally. The browser prototype can open the Discogs release page, but creating a live Marketplace listing should be done through a backend OAuth flow, not directly in this phone page.');
     }
 
     function saveItem() {
