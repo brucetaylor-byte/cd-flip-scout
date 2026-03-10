@@ -537,11 +537,15 @@
           <div class="candidate">
             <div class="candidate-title">Selected release: ${escapeHtml(selectedAnalysis.title)}</div>
             <div class="candidate-meta">Candidate list collapsed to save scrolling.</div>
-            <div class="row"><button type="button" class="secondary" onclick="expandCandidates()">Show candidate list again</button><button type="button" class="secondary" onclick="openDiscogsUrl(selectedAnalysis ? selectedAnalysis.discogsUrl : '')">Show in Discogs</button></div>
+            <div class="row">
+              <button type="button" class="secondary" onclick="expandCandidates()">Show candidate list again</button>
+              <button type="button" class="secondary" onclick="openDiscogsUrl(selectedAnalysis.discogsUrl)">Show in Discogs</button>
+            </div>
           </div>
         `;
         return;
       }
+
       area.innerHTML = results.map((item, index) => {
         const formats = Array.isArray(item.format) ? item.format.join(', ') : (item.format || 'Unknown format');
         const catno = item.catno || 'No cat#';
@@ -559,6 +563,17 @@
           </div>
         `;
       }).join('');
+    }
+
+    function openDiscogsUrl(url) {
+      if (!url) return;
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
+
+    function showCandidateInDiscogs(index) {
+      const item = currentCandidates[index];
+      if (!item || !item.id) return;
+      openDiscogsUrl(`https://www.discogs.com/release/${item.id}`);
     }
 
     function expandCandidates() {
@@ -639,6 +654,7 @@
         const title = [release.artists_sort || '', release.title || 'Untitled release'].filter(Boolean).join(' – ');
         selectedAnalysis = {
           discogsUrl: `https://www.discogs.com/release/${item.id}`,
+          discogsUrl: `https://www.discogs.com/release/${item.id}`,
           id: item.id,
           title,
           barcode: getEl('barcode').value.trim(),
@@ -679,18 +695,28 @@
       }
     }
 
-    function showBuyFlash() {
+    function showDecisionFlash(label) {
       const flash = getEl('buyFlash');
+      if (!flash) return;
+
+      if (label === 'Buy' || label === 'Strong Buy') {
+        flash.style.background = 'rgba(0,180,0,0.92)';
+        flash.textContent = 'BUY!';
+      } else if (label === 'Maybe') {
+        flash.style.background = 'rgba(220,170,0,0.92)';
+        flash.textContent = 'MAYBE';
+      } else {
+        flash.style.background = 'rgba(180,0,0,0.92)';
+        flash.textContent = 'SKIP';
+      }
+
       flash.style.display = 'flex';
-      requestAnimationFrame(() => {
-        flash.style.opacity = '1';
-      });
+      requestAnimationFrame(() => { flash.style.opacity = '1'; });
+
       setTimeout(() => {
         flash.style.opacity = '0';
-        setTimeout(() => {
-          flash.style.display = 'none';
-        }, 350);
-      }, 1200);
+        setTimeout(() => { flash.style.display = 'none'; }, 350);
+      }, 1000);
     }
 
     function renderRecommendation(analysis, rec) {
@@ -728,9 +754,7 @@
           <button type="button" class="secondary" onclick="recalculateRecommendation()">Recalculate</button>
         </div>
       `;
-      if (rec.label === 'Buy' || rec.label === 'Strong Buy') {
-        showBuyFlash();
-      }
+      showDecisionFlash(rec.label);
     }
 
     function recalculateRecommendation() {
