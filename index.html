@@ -279,32 +279,37 @@
     </div>
 
     <div class="card">
-      <h2>Lookup</h2>
-      <div class="grid-3">
-        <div>
-          <label for="barcode">Barcode</label>
-          <input id="barcode" placeholder="Scan or enter UPC / EAN" />
-        </div>
-        <div>
-          <label for="catno">Catalog number</label>
-          <input id="catno" placeholder="Useful for older records" />
-        </div>
-        <div>
-          <label for="artist">Artist</label>
-          <input id="artist" placeholder="Optional fallback" />
-        </div>
-        <div>
-          <label for="album">Album</label>
-          <input id="album" placeholder="Optional fallback" />
-        </div>
-        <div>
-          <label for="formatFilter">Preferred format</label>
-          <select id="formatFilter">
-            <option value="">Any format</option>
-            <option value="CD">CD</option>
-            <option value="Vinyl">Vinyl</option>
-            <option value="DVD">DVD</option>
-          </select>
+      <div class="row" style="justify-content: space-between; align-items: center;">
+        <h2 style="margin-bottom:0;">Lookup</h2>
+        <button type="button" class="secondary" id="lookupToggle" onclick="toggleLookupPanel()" aria-expanded="true" aria-controls="lookupPanel">▲ Lookup</button>
+      </div>
+      <div id="lookupPanel" style="margin-top:12px;">
+        <div class="grid-3">
+          <div>
+            <label for="barcode">Barcode</label>
+            <input id="barcode" placeholder="Scan or enter UPC / EAN" />
+          </div>
+          <div>
+            <label for="catno">Catalog number</label>
+            <input id="catno" placeholder="Useful for older records" />
+          </div>
+          <div>
+            <label for="artist">Artist</label>
+            <input id="artist" placeholder="Optional fallback" />
+          </div>
+          <div>
+            <label for="album">Album</label>
+            <input id="album" placeholder="Optional fallback" />
+          </div>
+          <div>
+            <label for="formatFilter">Preferred format</label>
+            <select id="formatFilter">
+              <option value="">Any format</option>
+              <option value="CD">CD</option>
+              <option value="Vinyl">Vinyl</option>
+              <option value="DVD">DVD</option>
+            </select>
+          </div>
         </div>
       </div>
       <div id="lookupStatus" class="status">Ready.</div>
@@ -343,6 +348,7 @@
     let currentCandidates = [];
     let selectedAnalysis = null;
     let candidateCollapsed = false;
+    let lookupCollapsed = false;
 
     function toggleSettings() {
       const panel = getEl('settingsPanel');
@@ -351,6 +357,16 @@
       panel.classList.toggle('open', !isOpen);
       button.innerText = isOpen ? '▼ Settings' : '▲ Settings';
       button.setAttribute('aria-expanded', String(!isOpen));
+    }
+
+    function toggleLookupPanel(forceState = null) {
+      const panel = getEl('lookupPanel');
+      const button = getEl('lookupToggle');
+      const nextOpen = forceState == null ? lookupCollapsed : !forceState;
+      lookupCollapsed = !nextOpen;
+      panel.style.display = nextOpen ? 'block' : 'none';
+      button.innerText = nextOpen ? '▲ Lookup' : '▼ Lookup';
+      button.setAttribute('aria-expanded', String(nextOpen));
     }
 
     function openDiscogsUrl(url) {
@@ -692,7 +708,6 @@
         const title = [release.artists_sort || '', release.title || 'Untitled release'].filter(Boolean).join(' – ');
         selectedAnalysis = {
           discogsUrl: `https://www.discogs.com/release/${item.id}`,
-          discogsUrl: `https://www.discogs.com/release/${item.id}`,
           id: item.id,
           title,
           barcode: getEl('barcode').value.trim(),
@@ -792,6 +807,7 @@
           <div class="stat"><span class="muted">Catalog number</span><strong>${escapeHtml(analysis.catno || '—')}</strong></div>
           <div class="stat"><span class="muted">Format</span><strong>${escapeHtml(analysis.formatCategory || 'Other')}</strong></div>
           <div class="stat"><span class="muted">Discogs release ID</span><strong>${escapeHtml(analysis.id)}</strong></div>
+          <div class="stat"><span class="muted">Last sold</span><strong>Check Discogs release page</strong></div>
 
           <div class="stat"><span class="muted">Median price (AUD)</span><strong>${money(analysis.medianAud)}</strong></div>
           <div class="stat"><span class="muted">Lowest listing (AUD)</span><strong>${money(analysis.lowestAud)}</strong></div>
@@ -949,6 +965,7 @@
     }
 
     async function startBarcodeScan() {
+      toggleLookupPanel(false);
       if (!('mediaDevices' in navigator) || !navigator.mediaDevices.getUserMedia) {
         setStatus('Camera access is not available in this browser.');
         return;
@@ -1032,6 +1049,7 @@
     });
 
     loadPrefs();
+    toggleLookupPanel(true);
     renderInventory();
   </script>
 </body>
