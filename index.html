@@ -221,10 +221,60 @@
       opacity: 1;
       margin-top: 12px;
     }
+    .hidden { display: none !important; }
+    .inventory-summary {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .inventory-manager {
+      max-width: 860px;
+      margin: 0 auto;
+    }
+    .inventory-card {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px;
+      background: #11161d;
+      margin-bottom: 12px;
+    }
+    .inventory-card h3 {
+      margin-bottom: 8px;
+      font-size: 18px;
+    }
+    .inventory-meta {
+      color: var(--muted);
+      font-size: 13px;
+      margin-bottom: 12px;
+    }
+    .inventory-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .inventory-grid textarea,
+    .inventory-grid input {
+      width: 100%;
+    }
+    textarea {
+      width: 100%;
+      min-height: 84px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: #11161d;
+      color: var(--text);
+      font-size: 16px;
+      resize: vertical;
+    }
+    @media (max-width: 700px) {
+      .inventory-grid {
+        grid-template-columns: 1fr;
+      }
+    }
   </style>
-  <link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#0f1115">
-<meta name="mobile-web-app-capable" content="yes">
 </head>
 <body>
   <div id="buyFlash">BUY!</div>
@@ -232,7 +282,7 @@
     <div class="card">
       <div class="row" style="justify-content: space-between; align-items: center;">
         <div>
-          <div class="title-wrap"><span class="logo">💿</span><h1 style="margin-bottom: 4px;">Should I Buy IT?</h1></div>
+          <div class="title-wrap"><span class="logo">💿</span><h1 style="margin-bottom: 4px;">Jas and Dad CD's Inc</h1></div>
           <p class="sub">Discogs-first scout for CDs, records, DVDs, and other Discogs releases.</p>
         </div>
         <button type="button" class="secondary" id="settingsToggle" onclick="toggleSettings()" aria-expanded="false" aria-controls="settingsPanel">▼ Settings</button>
@@ -340,9 +390,31 @@
     </div>
 
     <div class="card">
-      <h2>Inventory</h2>
-      <div id="inventoryArea" class="empty">No saved items yet.</div>
+      <div class="inventory-summary">
+        <div>
+          <h2 style="margin-bottom:4px;">Inventory</h2>
+          <div id="inventorySummaryText" class="small">No saved items yet.</div>
+        </div>
+        <button type="button" class="secondary" onclick="showInventoryPage()">Open Inventory Manager</button>
+      </div>
+      <div id="inventoryArea" class="small" style="margin-top:12px;">No saved items yet.</div>
     </div>
+  </div>
+
+  <div id="inventoryPage" class="inventory-manager hidden">
+    <div class="card">
+      <div class="row" style="justify-content: space-between; align-items: center;">
+        <div>
+          <h2 style="margin-bottom:4px;">Inventory Manager</h2>
+          <div class="small">Edit pricing, condition, comments, and export a CSV for manual Discogs upload.</div>
+        </div>
+        <div class="row">
+          <button type="button" class="secondary" onclick="exportInventoryCsv()">Export CSV</button>
+          <button type="button" class="secondary" onclick="hideInventoryPage()">← Back</button>
+        </div>
+      </div>
+    </div>
+    <div id="inventoryManagerArea"></div>
   </div>
 
   <script>
@@ -892,35 +964,118 @@
       localStorage.setItem(inventoryKey, JSON.stringify(items.slice(0, 200)));
     }
 
+    function showInventoryPage() {
+      getEl('inventoryPage').classList.remove('hidden');
+      document.querySelector('.wrap').classList.add('hidden');
+      renderInventoryManager();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function hideInventoryPage() {
+      getEl('inventoryPage').classList.add('hidden');
+      document.querySelector('.wrap').classList.remove('hidden');
+      renderInventory();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function updateInventorySummary(items) {
+      const count = items.length;
+      getEl('inventorySummaryText').textContent = count ? `${count} item${count === 1 ? '' : 's'} saved.` : 'No saved items yet.';
+    }
+
     function renderInventory() {
       const items = loadInventory();
       const area = getEl('inventoryArea');
+      updateInventorySummary(items);
       if (!items.length) {
-        area.innerHTML = '<div class="empty">No saved items yet.</div>';
+        area.innerHTML = 'No saved items yet.';
         return;
       }
-      area.innerHTML = `
-        <table class="inventory-table">
-          <thead><tr><th>Title</th><th>Format</th><th>Recommendation</th><th class="right">Profit</th><th>Actions</th></tr></thead>
-          <tbody>
-            ${items.map((item, index) => `
-              <tr>
-                <td>${escapeHtml(item.title)}</td>
-                <td>${escapeHtml(item.formatCategory || 'Other')}</td>
-                <td>${escapeHtml(item.recommendation)}</td>
-                <td class="right">${item.profit == null ? '—' : money(item.profit)}</td>
-                <td>
-                  <div class="inventory-actions">
-                    <button type="button" class="secondary" onclick="openDiscogsUrl('${item.discogsUrl || ''}')">Show</button>
-                    <button type="button" class="secondary" onclick="showListForSale(${index})">List for sale</button>
-                    <button type="button" class="secondary" onclick="removeInventoryItem(${index})">Remove</button>
-                  </div>
-                </td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-      `;
+      const previewItems = items.slice(0, 3).map((item) => `${item.title} — ${item.profit == null ? '—' : money(item.profit)}`).join('<br>');
+      area.innerHTML = `${previewItems}${items.length > 3 ? '<br>…' : ''}`;
+    }
+
+    function renderInventoryManager() {
+      const items = loadInventory();
+      const area = getEl('inventoryManagerArea');
+      if (!items.length) {
+        area.innerHTML = '<div class="card"><div class="empty">No saved items yet.</div></div>';
+        return;
+      }
+      area.innerHTML = items.map((item, index) => `
+        <div class="card inventory-card">
+          <h3>${escapeHtml(item.title)}</h3>
+          <div class="inventory-meta">${escapeHtml(item.formatCategory || 'Other')} • ${escapeHtml(item.recommendation || '—')} • Estimated profit: ${item.profit == null ? '—' : money(item.profit)}</div>
+          <div class="inventory-grid">
+            <div>
+              <label>List price (AUD)</label>
+              <input type="number" step="0.01" value="${escapeHtml(String(item.listPriceAud || item.suggestedSellPrice || ''))}" oninput="updateInventoryField(${index}, 'listPriceAud', this.value)" />
+            </div>
+            <div>
+              <label>Media condition</label>
+              <input type="text" value="${escapeHtml(item.mediaCondition || '')}" oninput="updateInventoryField(${index}, 'mediaCondition', this.value)" placeholder="VG+, NM, etc" />
+            </div>
+            <div>
+              <label>Cover / sleeve / booklet condition</label>
+              <input type="text" value="${escapeHtml(item.sleeveCondition || '')}" oninput="updateInventoryField(${index}, 'sleeveCondition', this.value)" placeholder="VG+, NM, etc" />
+            </div>
+            <div>
+              <label>Comment</label>
+              <textarea oninput="updateInventoryField(${index}, 'comment', this.value)" placeholder="Notes about condition, edition, inserts, etc">${escapeHtml(item.comment || '')}</textarea>
+            </div>
+          </div>
+          <div class="row" style="margin-top:12px;">
+            <button type="button" class="secondary" onclick="openDiscogsUrl('${item.discogsUrl || ''}')">Show in Discogs</button>
+            <button type="button" class="secondary" onclick="removeInventoryItem(${index})">Remove</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function updateInventoryField(index, field, value) {
+      const items = loadInventory();
+      if (!items[index]) return;
+      items[index][field] = value;
+      saveInventory(items);
+      updateInventorySummary(items);
+    }
+
+    function exportInventoryCsv() {
+      const items = loadInventory();
+      if (!items.length) {
+        setStatus('No inventory to export.');
+        return;
+      }
+      const headers = [
+        'title','format','discogs_release_url','catalog_number','list_price_aud','media_condition','sleeve_condition','comment','recommendation','estimated_profit_aud'
+      ];
+      const escapeCsv = (value) => {
+        const text = String(value ?? '');
+        return '"' + text.replace(/"/g, '""') + '"';
+      };
+      const rows = items.map((item) => [
+        item.title,
+        item.formatCategory || '',
+        item.discogsUrl || '',
+        item.catno || '',
+        item.listPriceAud || item.suggestedSellPrice || '',
+        item.mediaCondition || '',
+        item.sleeveCondition || '',
+        item.comment || '',
+        item.recommendation || '',
+        item.profit == null ? '' : item.profit
+      ]);
+      const csv = [headers, ...rows].map((row) => row.map(escapeCsv).join(',')).join('
+');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'jas-and-dad-inventory.csv';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
     }
 
     function showListForSale(index) {
@@ -938,6 +1093,7 @@
       item.listPriceAud = price;
       saveInventory(items);
       renderInventory();
+      renderInventoryManager();
       alert('Prepared listing details locally. The browser prototype can open the Discogs release page, but creating a live Marketplace listing should be done through a backend OAuth flow, not directly in this phone page.');
     }
 
@@ -950,6 +1106,7 @@
       items.splice(index, 1);
       saveInventory(items);
       renderInventory();
+      renderInventoryManager();
       setStatus('Removed from inventory.');
     }
 
@@ -959,6 +1116,7 @@
       items.unshift(selectedAnalysis);
       saveInventory(items);
       renderInventory();
+      renderInventoryManager();
       setStatus('Saved to local inventory.');
     }
 
@@ -1095,14 +1253,5 @@
     toggleLookupPanel(true);
     renderInventory();
   </script>
-  <script>
-  if ("serviceWorker" in navigator) {
-    window.addEventListener("load", () => {
-      navigator.serviceWorker.register("./sw.js")
-        .then(() => console.log("Service worker registered"))
-        .catch((err) => console.log("Service worker failed", err));
-    });
-  }
-</script>
 </body>
 </html>
