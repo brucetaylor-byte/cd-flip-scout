@@ -328,19 +328,26 @@ async function startBarcodeScan(){
 
       const codes = await detector.detect(video);
 
-      if(codes.length){
+      if (codes.length) {
+  const code = codes[0].rawValue;
 
-        const code = codes[0].rawValue;
+  getEl("barcode").value = code;
 
-        getEl("barcode").value = code;
+  console.log("SCANNED CODE:", code);
+  console.log("lookupDiscogs exists:", typeof lookupDiscogs);
 
-        stopBarcodeScan();
+  stopBarcodeScan();
 
-        lookupDiscogs();
+  try {
+    setStatus(`Scanned ${code}. Looking up Discogs…`);
+    lookupDiscogs();
+  } catch (err) {
+    console.error("lookupDiscogs failed", err);
+    setStatus(`Lookup failed after scan: ${err.message}`);
+  }
 
-        return;
-
-      }
+  return;
+}
 
       scanLoopHandle = requestAnimationFrame(scan);
     };
