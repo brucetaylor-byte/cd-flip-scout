@@ -192,11 +192,11 @@
           <input id="paypalFixed" type="number" min="0" step="0.01" value="0.30" />
         </div>
         <div>
-          <label for="region">Target region</label>
-          <input id="region" value="Australia only" disabled />
+          <label for="fxRate">FX rate to AUD</label>
+          <input id="fxRate" type="number" min="0" step="0.0001" value="1.55" />
         </div>
       </div>
-      <div class="small">Token is stored only in your browser on this device. If live lookup fails, the likely causes are API limits, token issues, or browser restrictions.</div>
+      <div class="small">All displayed prices are converted to AUD. If Discogs returns USD or another currency, this prototype uses the FX rate above to convert into AUD. Token is stored only in your browser on this device.</div>
     </div>
 
     <div class="card">
@@ -244,20 +244,21 @@
   <script>
     const inventoryKey = 'cdFlipScoutInventory';
     const tokenKey = 'cdFlipScoutDiscogsToken';
-    const userAgent = 'CdFlipScout/0.2 (+https://local-device.example)';
+    const fxKey = 'cdFlipScoutFxRate';
 
     let currentStream = null;
     let scanLoopHandle = null;
     let currentCandidates = [];
     let selectedAnalysis = null;
+    let candidateCollapsed = false;
 
     function getEl(id) {
       return document.getElementById(id);
     }
 
-    function money(value, currency = 'AUD') {
+    function money(value) {
       if (!Number.isFinite(value)) return '—';
-      return new Intl.NumberFormat('en-AU', { style: 'currency', currency }).format(value);
+      return new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(value);
     }
 
     function escapeHtml(value) {
@@ -274,12 +275,14 @@
       return Number.isFinite(parsed) ? parsed : 0;
     }
 
-    function saveToken() {
+    function savePrefs() {
       localStorage.setItem(tokenKey, getEl('token').value.trim());
+      localStorage.setItem(fxKey, getEl('fxRate').value.trim());
     }
 
-    function loadToken() {
+    function loadPrefs() {
       getEl('token').value = localStorage.getItem(tokenKey) || '';
+      getEl('fxRate').value = localStorage.getItem(fxKey) || '1.55';
     }
 
     function setStatus(message) {
@@ -295,6 +298,36 @@
         headers['Authorization'] = `Discogs token=${token}`;
       }
       return headers;
+    }
+
+    function toAud(amount, currency) {
+      if (!Number.isFinite(amount)) return 0;
+      const fxRate = getNumber('fxRate') || 1;
+      const code = String(currency || 'AUD').toUpperCase();
+      if (code === 'AUD') return amount;
+      return amount * fxRate;
+    }
+
+    function roundSellPrice(value) {
+      if (!Number.isFinite(value) || value <= 0) return 0;
+      return Math.round(value * 2) / 2;
+    }
+
+    function suggestSellPrice(medianAud, lowestAud, demandLabel) {
+      if (!Number.isFinite(medianAud) || medianAud <= 0) return 0;
+      if (demandLabel === 'High') {
+        return roundSellPrice(Math.max(medianAud, lowestAud || 0));
+      }
+      if (demandLabel === 'Medium') {
+        if (Number.isFinite(lowestAud) && lowestAud > 0) {
+          return roundSellPrice(Math.min(medianAud, lowestAud + 1));
+        }
+        return roundSellPrice(medianAud);
+      }
+      if (Number.isFinite(lowestAud) && lowestAud > 0) {
+        return roundSellPrice(Math.max(lowestAud - 0.5, 0));
+      }
+      return roundSellPrice(medianAud);
     }
 
     async function fetchDiscogsJson(url) {
@@ -354,21 +387,15 @@
       params.set('type', 'release');
       params.set('per_page', '10');
 
-      if (barcode) {
-        params.set('barcode', barcode);
-      }
-      if (artist) {
-        params.set('artist', artist);
-      }
-      if (album) {
-        params.set('release_title', album);
-      }
+      if (barcode) params.set('barcode', barcode);
+      if (artist) params.set('artist', artist);
+      if (album) params.set('release_title', album);
 
       return `https://api.discogs.com/database/search?${params.toString()}`;
     }
 
     async function lookupDiscogs() {
-      saveToken();
+      savePrefs();
       const barcode = getEl('barcode').value.trim();
       const artist = getEl('artist').value.trim();
       const album = getEl('album').value.trim();
@@ -382,17 +409,14 @@
       getEl('candidateArea').innerHTML = '<div class="empty">Searching…</div>';
       getEl('recommendationArea').innerHTML = '<div class="empty">Select a Discogs release to analyse it.</div>';
       selectedAnalysis = null;
+      candidateCollapsed = false;
 
       try {
         const data = await fetchDiscogsJson(buildSearchUrl());
         const results = Array.isArray(data.results) ? data.results : [];
         currentCandidates = results;
         renderCandidates(results);
-        if (results.length) {
-          setStatus(`Found ${results.length} Discogs candidate${results.length === 1 ? '' : 's'}.`);
-        } else {
-          setStatus('No Discogs results found.');
-        }
+        setStatus(results.length ? `Found ${results.length} Discogs candidate${results.length === 1 ? '' : 's'}.` : 'No Discogs results found.');
       } catch (error) {
         setStatus(`Lookup failed: ${error.message}`);
         getEl('candidateArea').innerHTML = '<div class="empty">Lookup failed. Try adding a Discogs token or using artist + album fallback.</div>';
@@ -403,6 +427,19 @@
       const area = getEl('candidateArea');
       if (!results.length) {
         area.innerHTML = '<div class="empty">No Discogs results yet.</div>';
+        return;
+      }
+
+      if (candidateCollapsed && selectedAnalysis) {
+        area.innerHTML = `
+          <div class="candidate">
+            <div class="candidate-title">Selected release: ${escapeHtml(selectedAnalysis.title)}</div>
+            <div class="candidate-meta">Candidate list collapsed to save scrolling.</div>
+            <div class="row">
+              <button type="button" class="secondary" onclick="expandCandidates()">Show candidate list again</button>
+            </div>
+          </div>
+        `;
         return;
       }
 
@@ -421,6 +458,11 @@
           </div>
         `;
       }).join('');
+    }
+
+    function expandCandidates() {
+      candidateCollapsed = false;
+      renderCandidates(currentCandidates);
     }
 
     function calcDemand(stats, release) {
@@ -483,17 +525,20 @@
           fetchDiscogsJson(`https://api.discogs.com/marketplace/stats/${item.id}`)
         ]);
 
-        const median = Number(stats?.median_price?.value ?? 0);
-        const currency = stats?.median_price?.currency || stats?.lowest_price?.currency || 'USD';
-        const lowest = Number(stats?.lowest_price?.value ?? 0);
+        const medianRaw = Number(stats?.median_price?.value ?? 0);
+        const lowestRaw = Number(stats?.lowest_price?.value ?? 0);
+        const rawCurrency = stats?.median_price?.currency || stats?.lowest_price?.currency || 'AUD';
+        const medianAud = toAud(medianRaw, rawCurrency);
+        const lowestAud = toAud(lowestRaw, rawCurrency);
         const buyPrice = getNumber('buyPrice');
         const discogsFee = getNumber('discogsFee') / 100;
         const paypalPct = getNumber('paypalPct') / 100;
         const paypalFixed = getNumber('paypalFixed');
-        const discogsCost = median * discogsFee;
-        const paypalCost = (median * paypalPct) + paypalFixed;
-        const profit = median - discogsCost - paypalCost - buyPrice;
         const demand = calcDemand(stats, release);
+        const suggestedSellPrice = suggestSellPrice(medianAud, lowestAud, demand.label);
+        const discogsCost = suggestedSellPrice * discogsFee;
+        const paypalCost = (suggestedSellPrice * paypalPct) + paypalFixed;
+        const profit = suggestedSellPrice - discogsCost - paypalCost - buyPrice;
         const rec = scoreRecommendation(profit, demand.label, true);
         const title = [release.artists_sort || '', release.title || 'Untitled release'].filter(Boolean).join(' – ');
 
@@ -501,9 +546,9 @@
           id: item.id,
           title,
           barcode: getEl('barcode').value.trim(),
-          median,
-          lowest,
-          currency,
+          medianAud,
+          lowestAud,
+          suggestedSellPrice,
           profit,
           demand: demand.label,
           numForSale: Number(stats?.num_for_sale || 0),
@@ -513,9 +558,12 @@
           buyPrice,
           discogsCost,
           paypalCost,
+          sourceCurrency: rawCurrency,
           createdAt: new Date().toISOString()
         };
 
+        candidateCollapsed = true;
+        renderCandidates(currentCandidates);
         renderRecommendation(selectedAnalysis, rec);
         setStatus(`Loaded Discogs release ${item.id}.`);
       } catch (error) {
@@ -525,22 +573,23 @@
     }
 
     function renderRecommendation(analysis, rec) {
-      const discogsExists = true;
       getEl('recommendationArea').innerHTML = `
         <h3>${escapeHtml(analysis.title)}</h3>
         <div class="pill ${rec.cls}">${escapeHtml(rec.label)}</div>
         <div class="pill info">Found in Discogs</div>
         <div class="stat"><span class="muted">Barcode</span><strong>${escapeHtml(analysis.barcode || 'Not scanned')}</strong></div>
         <div class="stat"><span class="muted">Discogs release ID</span><strong>${escapeHtml(analysis.id)}</strong></div>
-        <div class="stat"><span class="muted">Median price</span><strong>${money(analysis.median, analysis.currency)}</strong></div>
-        <div class="stat"><span class="muted">Lowest current price</span><strong>${money(analysis.lowest, analysis.currency)}</strong></div>
-        <div class="stat"><span class="muted">Buy price</span><strong>${money(analysis.buyPrice)}</strong></div>
-        <div class="stat"><span class="muted">Discogs fee estimate</span><strong>${money(analysis.discogsCost, analysis.currency)}</strong></div>
-        <div class="stat"><span class="muted">PayPal fee estimate</span><strong>${money(analysis.paypalCost, analysis.currency)}</strong></div>
-        <div class="stat"><span class="muted">Estimated net profit</span><strong>${money(analysis.profit, analysis.currency)}</strong></div>
+        <div class="stat"><span class="muted">Median price (AUD)</span><strong>${money(analysis.medianAud)}</strong></div>
+        <div class="stat"><span class="muted">Lowest current price (AUD)</span><strong>${money(analysis.lowestAud)}</strong></div>
+        <div class="stat"><span class="muted">Suggested sell price (AUD)</span><strong>${money(analysis.suggestedSellPrice)}</strong></div>
+        <div class="stat"><span class="muted">Buy price (AUD)</span><strong>${money(analysis.buyPrice)}</strong></div>
+        <div class="stat"><span class="muted">Discogs fee estimate (AUD)</span><strong>${money(analysis.discogsCost)}</strong></div>
+        <div class="stat"><span class="muted">PayPal fee estimate (AUD)</span><strong>${money(analysis.paypalCost)}</strong></div>
+        <div class="stat"><span class="muted">Estimated net profit (AUD)</span><strong>${money(analysis.profit)}</strong></div>
         <div class="stat"><span class="muted">Demand signal</span><strong>${escapeHtml(analysis.demand)}</strong></div>
         <div class="stat"><span class="muted">Want / For sale</span><strong>${analysis.want} / ${analysis.numForSale}</strong></div>
         <div class="stat"><span class="muted">Have count</span><strong>${analysis.have}</strong></div>
+        <div class="stat"><span class="muted">Discogs source currency</span><strong>${escapeHtml(analysis.sourceCurrency)}</strong></div>
         <div class="row" style="margin-top: 14px;">
           <button type="button" onclick="saveItem()">Save to Inventory</button>
           <button type="button" class="secondary" onclick="recalculateRecommendation()">Recalculate</button>
@@ -554,10 +603,12 @@
       const discogsFee = getNumber('discogsFee') / 100;
       const paypalPct = getNumber('paypalPct') / 100;
       const paypalFixed = getNumber('paypalFixed');
+      const suggestedSellPrice = suggestSellPrice(selectedAnalysis.medianAud, selectedAnalysis.lowestAud, selectedAnalysis.demand);
       selectedAnalysis.buyPrice = buyPrice;
-      selectedAnalysis.discogsCost = selectedAnalysis.median * discogsFee;
-      selectedAnalysis.paypalCost = (selectedAnalysis.median * paypalPct) + paypalFixed;
-      selectedAnalysis.profit = selectedAnalysis.median - selectedAnalysis.discogsCost - selectedAnalysis.paypalCost - buyPrice;
+      selectedAnalysis.suggestedSellPrice = suggestedSellPrice;
+      selectedAnalysis.discogsCost = suggestedSellPrice * discogsFee;
+      selectedAnalysis.paypalCost = (suggestedSellPrice * paypalPct) + paypalFixed;
+      selectedAnalysis.profit = suggestedSellPrice - selectedAnalysis.discogsCost - selectedAnalysis.paypalCost - buyPrice;
       const rec = scoreRecommendation(selectedAnalysis.profit, selectedAnalysis.demand, true);
       selectedAnalysis.recommendation = rec.label;
       renderRecommendation(selectedAnalysis, rec);
@@ -596,7 +647,7 @@
               <tr>
                 <td>${escapeHtml(item.title)}</td>
                 <td>${escapeHtml(item.recommendation)}</td>
-                <td class="right">${money(item.profit, item.currency || 'AUD')}</td>
+                <td class="right">${money(item.profit)}</td>
               </tr>
             `).join('')}
           </tbody>
@@ -623,6 +674,7 @@
       getEl('album').value = '';
       currentCandidates = [];
       selectedAnalysis = null;
+      candidateCollapsed = false;
       getEl('candidateArea').innerHTML = '<div class="empty">No Discogs results yet.</div>';
       getEl('recommendationArea').innerHTML = '<div class="empty">Select a Discogs release to analyse it.</div>';
       setStatus('Ready.');
@@ -660,9 +712,10 @@
 
         const tick = async () => {
           if (!currentStream) return;
+
           try {
             const codes = await detector.detect(preview);
-            if (codes.length) {
+            if (codes.length > 0) {
               const value = codes[0].rawValue || '';
               if (value) {
                 getEl('barcode').value = value;
@@ -672,12 +725,12 @@
               }
             }
           } catch (error) {
-            setStatus('Barcode scan failed. You can still type the barcode manually.');
-            stopBarcodeScan();
-            return;
+            console.log('scan frame error', error);
           }
+
           scanLoopHandle = requestAnimationFrame(tick);
         };
+
         tick();
       } catch (error) {
         setStatus(`Camera access failed: ${error.message}`);
@@ -700,8 +753,9 @@
     }
 
     function attachListeners() {
-      getEl('token').addEventListener('change', saveToken);
-      ['buyPrice', 'discogsFee', 'paypalPct', 'paypalFixed'].forEach((id) => {
+      getEl('token').addEventListener('change', savePrefs);
+      getEl('fxRate').addEventListener('change', savePrefs);
+      ['buyPrice', 'discogsFee', 'paypalPct', 'paypalFixed', 'fxRate'].forEach((id) => {
         getEl(id).addEventListener('input', () => {
           if (selectedAnalysis) recalculateRecommendation();
         });
@@ -713,15 +767,21 @@
         { profit: 2.9, demand: 'Medium', expected: 'Skip' },
         { profit: 4.2, demand: 'Medium', expected: 'Maybe' },
         { profit: 7.2, demand: 'Medium', expected: 'Buy' },
-        { profit: 12, demand: 'High', expected: 'Strong Buy' }
+        { profit: 12, demand: 'High', expected: 'Strong Buy' },
+        { suggested: suggestSellPrice(15.1, 13.4, 'High'), expectedSuggested: 15.5 },
+        { suggested: suggestSellPrice(15.1, 13.4, 'Low'), expectedSuggested: 13.0 }
       ];
-      const failed = tests.filter((test) => scoreRecommendation(test.profit, test.demand, true).label !== test.expected);
-      if (failed.length) {
-        console.error('Self-tests failed', failed);
-      }
+      const failed = [];
+      if (scoreRecommendation(tests[0].profit, tests[0].demand, true).label !== tests[0].expected) failed.push(tests[0]);
+      if (scoreRecommendation(tests[1].profit, tests[1].demand, true).label !== tests[1].expected) failed.push(tests[1]);
+      if (scoreRecommendation(tests[2].profit, tests[2].demand, true).label !== tests[2].expected) failed.push(tests[2]);
+      if (scoreRecommendation(tests[3].profit, tests[3].demand, true).label !== tests[3].expected) failed.push(tests[3]);
+      if (tests[4].suggested !== tests[4].expectedSuggested) failed.push(tests[4]);
+      if (tests[5].suggested !== tests[5].expectedSuggested) failed.push(tests[5]);
+      if (failed.length) console.error('Self-tests failed', failed);
     }
 
-    loadToken();
+    loadPrefs();
     attachListeners();
     renderInventory();
     runSelfTests();
