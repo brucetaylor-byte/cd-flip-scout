@@ -148,14 +148,42 @@
       width: 100%;
       border-collapse: collapse;
       margin-top: 10px;
+      table-layout: fixed;
     }
     th, td {
       text-align: left;
       padding: 10px 8px;
       border-bottom: 1px solid var(--border);
       font-size: 14px;
+      vertical-align: top;
+      word-wrap: break-word;
+      overflow-wrap: anywhere;
     }
     .right { text-align: right; }
+    .inventory-table th:nth-child(1), .inventory-table td:nth-child(1) { width: 30%; }
+    .inventory-table th:nth-child(2), .inventory-table td:nth-child(2) { width: 14%; }
+    .inventory-table th:nth-child(3), .inventory-table td:nth-child(3) { width: 18%; }
+    .inventory-table th:nth-child(4), .inventory-table td:nth-child(4) { width: 14%; }
+    .inventory-table th:nth-child(5), .inventory-table td:nth-child(5) { width: 24%; }
+    .inventory-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      align-items: stretch;
+    }
+    .inventory-actions button {
+      width: 100%;
+      padding: 10px 12px;
+      font-size: 14px;
+      line-height: 1.2;
+    }
+    @media (max-width: 700px) {
+      .inventory-table th:nth-child(1), .inventory-table td:nth-child(1) { width: 34%; }
+      .inventory-table th:nth-child(2), .inventory-table td:nth-child(2) { width: 12%; }
+      .inventory-table th:nth-child(3), .inventory-table td:nth-child(3) { width: 16%; }
+      .inventory-table th:nth-child(4), .inventory-table td:nth-child(4) { width: 14%; }
+      .inventory-table th:nth-child(5), .inventory-table td:nth-child(5) { width: 24%; }
+    }
     #buyFlash {
       position: fixed;
       inset: 0;
@@ -798,7 +826,7 @@
         return;
       }
       area.innerHTML = `
-        <table>
+        <table class="inventory-table">
           <thead><tr><th>Title</th><th>Format</th><th>Recommendation</th><th class="right">Profit</th><th>Actions</th></tr></thead>
           <tbody>
             ${items.map((item, index) => `
@@ -808,9 +836,10 @@
                 <td>${escapeHtml(item.recommendation)}</td>
                 <td class="right">${item.profit == null ? '—' : money(item.profit)}</td>
                 <td>
-                  <div class="row">
+                  <div class="inventory-actions">
                     <button type="button" class="secondary" onclick="openDiscogsUrl('${item.discogsUrl || ''}')">Show</button>
                     <button type="button" class="secondary" onclick="showListForSale(${index})">List for sale</button>
+                    <button type="button" class="secondary" onclick="removeInventoryItem(${index})">Remove</button>
                   </div>
                 </td>
               </tr>
@@ -836,6 +865,18 @@
       saveInventory(items);
       renderInventory();
       alert('Prepared listing details locally. The browser prototype can open the Discogs release page, but creating a live Marketplace listing should be done through a backend OAuth flow, not directly in this phone page.');
+    }
+
+    function removeInventoryItem(index) {
+      const items = loadInventory();
+      const item = items[index];
+      if (!item) return;
+      const ok = confirm(`Remove ${item.title} from inventory?`);
+      if (!ok) return;
+      items.splice(index, 1);
+      saveInventory(items);
+      renderInventory();
+      setStatus('Removed from inventory.');
     }
 
     function saveItem() {
