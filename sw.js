@@ -1,4 +1,4 @@
-const CACHE_NAME = "jas-and-dad-cds-v2";
+const CACHE_NAME = "jas-and-dad-cds-v5";
 const ASSETS = ["./", "./index.html", "./manifest.json"];
 
 self.addEventListener("install", (event) => {
