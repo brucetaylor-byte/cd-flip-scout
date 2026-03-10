@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CD Flip Scout Live</title>
+  <style>
+    :root {
+      --bg: #0f1115;
+      --card: #1a1f29;
+      --muted: #95a1b2;
+      --text: #f3f6fb;
+      --accent: #6ee7b7;
+      --warn: #fbbf24;
+      --bad: #f87171;
+      --good: #34d399;
+      --border: #2b3340;
+      --blue: #7dd3fc;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding: 18px;
+    }
+    .wrap {
+      max-width: 860px;
+      margin: 0 auto;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 16px;
+      margin-bottom: 16px;
+      box-shadow: 0 6px 24px rgba(0,0,0,0.25);
+    }
+    h1, h2, h3 { margin-top: 0; }
+    .sub { color: var(--muted); margin-top: -8px; }
+    .grid {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: 1fr 1fr;
+    }
+    .grid-3 {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: 1fr 1fr 1fr;
+    }
+    @media (max-width: 700px) {
+      .grid, .grid-3 { grid-template-columns: 1fr; }
+    }
+    label {
+      display: block;
+      font-size: 14px;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    input, select {
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: #11161d;
+      color: var(--text);
+      font-size: 16px;
+    }
+    input[disabled] {
+      opacity: 0.75;
+    }
+    button {
+      border: 0;
+      border-radius: 12px;
+      padding: 12px 16px;
+      font-size: 16px;
+      cursor: pointer;
+      background: var(--accent);
+      color: #08110d;
+      font-weight: 700;
+    }
+    button.secondary {
+      background: #253041;
+      color: var(--text);
+    }
+    button.warn {
+      background: var(--warn);
+      color: #221805;
+    }
+    .row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .pill {
+      display: inline-block;
+      padding: 8px 12px;
+      border-radius: 999px;
+      font-weight: 700;
+      margin-top: 8px;
+    }
+    .strong-buy { background: rgba(52,211,153,0.18); color: var(--good); }
+    .buy { background: rgba(110,231,183,0.18); color: var(--accent); }
+    .maybe { background: rgba(251,191,36,0.18); color: var(--warn); }
+    .skip { background: rgba(248,113,113,0.18); color: var(--bad); }
+    .info { background: rgba(125,211,252,0.18); color: var(--blue); }
+    .stat {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .stat:last-child { border-bottom: 0; }
+    .muted { color: var(--muted); }
+    .small {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 10px;
+      line-height: 1.4;
+    }
+    .empty { color: var(--muted); font-style: italic; }
+    .candidate {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
+      margin-bottom: 10px;
+      background: #11161d;
+    }
+    .candidate-title {
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+    .candidate-meta {
+      color: var(--muted);
+      font-size: 13px;
+      margin-bottom: 10px;
+    }
+    .status {
+      min-height: 24px;
+      font-size: 14px;
+      color: var(--muted);
+      margin-top: 8px;
+    }
+    video {
+      width: 100%;
+      border-radius: 12px;
+      background: #000;
+      margin-top: 10px;
+      display: none;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+    }
+    th, td {
+      text-align: left;
+      padding: 10px 8px;
+      border-bottom: 1px solid var(--border);
+      font-size: 14px;
+    }
+    .right { text-align: right; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>CD Flip Scout Live</h1>
+      <p class="sub">Discogs-first scout for CDs and records. Search by barcode first, then calculate value, demand, and likely profit.</p>
+      <div class="grid">
+        <div>
+          <label for="token">Discogs user token (optional but recommended)</label>
+          <input id="token" placeholder="Paste your Discogs user token" />
+        </div>
+        <div>
+          <label for="buyPrice">Buy price (AUD)</label>
+          <input id="buyPrice" type="number" min="0" step="0.01" value="2.00" />
+        </div>
+        <div>
+          <label for="discogsFee">Discogs fee %</label>
+          <input id="discogsFee" type="number" min="0" step="0.1" value="9" />
+        </div>
+        <div>
+          <label for="paypalPct">PayPal fee %</label>
+          <input id="paypalPct" type="number" min="0" step="0.1" value="2.6" />
+        </div>
+        <div>
+          <label for="paypalFixed">PayPal fixed fee (AUD)</label>
+          <input id="paypalFixed" type="number" min="0" step="0.01" value="0.30" />
+        </div>
+        <div>
+          <label for="region">Target region</label>
+          <input id="region" value="Australia only" disabled />
+        </div>
+      </div>
+      <div class="small">Token is stored only in your browser on this device. If live lookup fails, the likely causes are API limits, token issues, or browser restrictions.</div>
+    </div>
+
+    <div class="card">
+      <h2>Lookup</h2>
+      <div class="grid-3">
+        <div>
+          <label for="barcode">Barcode</label>
+          <input id="barcode" placeholder="Scan or enter UPC / EAN" />
+        </div>
+        <div>
+          <label for="artist">Artist</label>
+          <input id="artist" placeholder="Optional fallback" />
+        </div>
+        <div>
+          <label for="album">Album</label>
+          <input id="album" placeholder="Optional fallback" />
+        </div>
+      </div>
+      <div class="row" style="margin-top: 14px;">
+        <button type="button" onclick="startBarcodeScan()">Scan Barcode</button>
+        <button type="button" onclick="lookupDiscogs()">Lookup Discogs</button>
+        <button type="button" class="secondary" onclick="useSampleBarcode()">Use Sample</button>
+        <button type="button" class="secondary" onclick="clearLookup()">Clear</button>
+      </div>
+      <div id="lookupStatus" class="status">Ready.</div>
+      <video id="preview" playsinline></video>
+    </div>
+
+    <div class="card">
+      <h2>Candidate Releases</h2>
+      <div id="candidateArea" class="empty">No Discogs results yet.</div>
+    </div>
+
+    <div class="card">
+      <h2>Recommendation</h2>
+      <div id="recommendationArea" class="empty">Select a Discogs release to analyse it.</div>
+    </div>
+
+    <div class="card">
+      <h2>Inventory</h2>
+      <div id="inventoryArea" class="empty">No saved items yet.</div>
+    </div>
+  </div>
+
+  <script>
+    const inventoryKey = 'cdFlipScoutInventory';
+    const tokenKey = 'cdFlipScoutDiscogsToken';
+    const userAgent = 'CdFlipScout/0.2 (+https://local-device.example)';
+
+    let currentStream = null;
+    let scanLoopHandle = null;
+    let currentCandidates = [];
+    let selectedAnalysis = null;
+
+    function getEl(id) {
+      return document.getElementById(id);
+    }
+
+    function money(value, currency = 'AUD') {
+      if (!Number.isFinite(value)) return '—';
+      return new Intl.NumberFormat('en-AU', { style: 'currency', currency }).format(value);
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function getNumber(id) {
+      const parsed = parseFloat(getEl(id).value);
+      return Number.isFinite(parsed) ? parsed : 0;
+    }
+
+    function saveToken() {
+      localStorage.setItem(tokenKey, getEl('token').value.trim());
+    }
+
+    function loadToken() {
+      getEl('token').value = localStorage.getItem(tokenKey) || '';
+    }
+
+    function setStatus(message) {
+      getEl('lookupStatus').textContent = message;
+    }
+
+    function buildHeaders() {
+      const headers = {
+        'Accept': 'application/vnd.discogs.v2.discogs+json'
+      };
+      const token = getEl('token').value.trim();
+      if (token) {
+        headers['Authorization'] = `Discogs token=${token}`;
+      }
+      return headers;
+    }
+
+    async function fetchDiscogsJson(url) {
+      try {
+        const response = await fetch(url, {
+          headers: buildHeaders(),
+          mode: 'cors'
+        });
+        if (!response.ok) {
+          throw new Error(`Discogs returned ${response.status}`);
+        }
+        return await response.json();
+      } catch (error) {
+        return await fetchDiscogsJsonp(url);
+      }
+    }
+
+    function fetchDiscogsJsonp(url) {
+      return new Promise((resolve, reject) => {
+        const callbackName = `discogsCallback_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+        const script = document.createElement('script');
+        const separator = url.includes('?') ? '&' : '?';
+        const timeout = setTimeout(() => {
+          cleanup();
+          reject(new Error('Discogs JSONP request timed out'));
+        }, 12000);
+
+        function cleanup() {
+          clearTimeout(timeout);
+          if (script.parentNode) script.parentNode.removeChild(script);
+          delete window[callbackName];
+        }
+
+        window[callbackName] = (payload) => {
+          cleanup();
+          if (payload && payload.meta && payload.meta.status && payload.meta.status >= 400) {
+            reject(new Error(`Discogs JSONP returned ${payload.meta.status}`));
+            return;
+          }
+          resolve(payload && payload.data ? payload.data : payload);
+        };
+
+        script.src = `${url}${separator}callback=${callbackName}`;
+        script.onerror = () => {
+          cleanup();
+          reject(new Error('Discogs JSONP failed'));
+        };
+        document.body.appendChild(script);
+      });
+    }
+
+    function buildSearchUrl() {
+      const barcode = getEl('barcode').value.trim();
+      const artist = getEl('artist').value.trim();
+      const album = getEl('album').value.trim();
+      const params = new URLSearchParams();
+      params.set('type', 'release');
+      params.set('per_page', '10');
+
+      if (barcode) {
+        params.set('barcode', barcode);
+      }
+      if (artist) {
+        params.set('artist', artist);
+      }
+      if (album) {
+        params.set('release_title', album);
+      }
+
+      return `https://api.discogs.com/database/search?${params.toString()}`;
+    }
+
+    async function lookupDiscogs() {
+      saveToken();
+      const barcode = getEl('barcode').value.trim();
+      const artist = getEl('artist').value.trim();
+      const album = getEl('album').value.trim();
+
+      if (!barcode && !artist && !album) {
+        setStatus('Enter a barcode or at least artist and album.');
+        return;
+      }
+
+      setStatus('Looking up Discogs…');
+      getEl('candidateArea').innerHTML = '<div class="empty">Searching…</div>';
+      getEl('recommendationArea').innerHTML = '<div class="empty">Select a Discogs release to analyse it.</div>';
+      selectedAnalysis = null;
+
+      try {
+        const data = await fetchDiscogsJson(buildSearchUrl());
+        const results = Array.isArray(data.results) ? data.results : [];
+        currentCandidates = results;
+        renderCandidates(results);
+        if (results.length) {
+          setStatus(`Found ${results.length} Discogs candidate${results.length === 1 ? '' : 's'}.`);
+        } else {
+          setStatus('No Discogs results found.');
+        }
+      } catch (error) {
+        setStatus(`Lookup failed: ${error.message}`);
+        getEl('candidateArea').innerHTML = '<div class="empty">Lookup failed. Try adding a Discogs token or using artist + album fallback.</div>';
+      }
+    }
+
+    function renderCandidates(results) {
+      const area = getEl('candidateArea');
+      if (!results.length) {
+        area.innerHTML = '<div class="empty">No Discogs results yet.</div>';
+        return;
+      }
+
+      area.innerHTML = results.map((item, index) => {
+        const formats = Array.isArray(item.format) ? item.format.join(', ') : (item.format || 'Unknown format');
+        const title = item.title || 'Untitled release';
+        const meta = [item.year || 'Year unknown', item.country || 'Country unknown', formats].join(' • ');
+        return `
+          <div class="candidate">
+            <div class="candidate-title">${escapeHtml(title)}</div>
+            <div class="candidate-meta">${escapeHtml(meta)}</div>
+            <div class="row">
+              <button type="button" onclick="selectCandidate(${index})">Use this release</button>
+              <span class="small">Discogs ID: ${escapeHtml(item.id || '—')}</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function calcDemand(stats, release) {
+      const forSale = Number(stats?.num_for_sale || 0);
+      const want = Number(release?.community?.want || 0);
+      const ratio = forSale > 0 ? want / forSale : (want > 0 ? want : 0);
+
+      if (want >= 50 && ratio >= 2) return { label: 'High', score: 3 };
+      if (want >= 10 && ratio >= 0.7) return { label: 'Medium', score: 2 };
+      return { label: 'Low', score: 1 };
+    }
+
+    function scoreRecommendation(profit, demandLabel, inDiscogs) {
+      let level = 'Skip';
+      let cls = 'skip';
+
+      if (profit >= 10) {
+        level = 'Strong Buy';
+        cls = 'strong-buy';
+      } else if (profit >= 6) {
+        level = 'Buy';
+        cls = 'buy';
+      } else if (profit >= 3) {
+        level = 'Maybe';
+        cls = 'maybe';
+      }
+
+      if (demandLabel === 'Low' && level === 'Strong Buy') {
+        level = 'Buy';
+        cls = 'buy';
+      } else if (demandLabel === 'Low' && level === 'Buy') {
+        level = 'Maybe';
+        cls = 'maybe';
+      }
+
+      if (!inDiscogs && level === 'Strong Buy') {
+        level = 'Buy';
+        cls = 'buy';
+      } else if (!inDiscogs && level === 'Buy') {
+        level = 'Maybe';
+        cls = 'maybe';
+      } else if (!inDiscogs && level === 'Maybe') {
+        level = 'Skip';
+        cls = 'skip';
+      }
+
+      return { label: level, cls };
+    }
+
+    async function selectCandidate(index) {
+      const item = currentCandidates[index];
+      if (!item || !item.id) return;
+
+      setStatus(`Loading release ${item.id}…`);
+      getEl('recommendationArea').innerHTML = '<div class="empty">Analysing release…</div>';
+
+      try {
+        const [release, stats] = await Promise.all([
+          fetchDiscogsJson(`https://api.discogs.com/releases/${item.id}`),
+          fetchDiscogsJson(`https://api.discogs.com/marketplace/stats/${item.id}`)
+        ]);
+
+        const median = Number(stats?.median_price?.value ?? 0);
+        const currency = stats?.median_price?.currency || stats?.lowest_price?.currency || 'USD';
+        const lowest = Number(stats?.lowest_price?.value ?? 0);
+        const buyPrice = getNumber('buyPrice');
+        const discogsFee = getNumber('discogsFee') / 100;
+        const paypalPct = getNumber('paypalPct') / 100;
+        const paypalFixed = getNumber('paypalFixed');
+        const discogsCost = median * discogsFee;
+        const paypalCost = (median * paypalPct) + paypalFixed;
+        const profit = median - discogsCost - paypalCost - buyPrice;
+        const demand = calcDemand(stats, release);
+        const rec = scoreRecommendation(profit, demand.label, true);
+        const title = [release.artists_sort || '', release.title || 'Untitled release'].filter(Boolean).join(' – ');
+
+        selectedAnalysis = {
+          id: item.id,
+          title,
+          barcode: getEl('barcode').value.trim(),
+          median,
+          lowest,
+          currency,
+          profit,
+          demand: demand.label,
+          numForSale: Number(stats?.num_for_sale || 0),
+          want: Number(release?.community?.want || 0),
+          have: Number(release?.community?.have || 0),
+          recommendation: rec.label,
+          buyPrice,
+          discogsCost,
+          paypalCost,
+          createdAt: new Date().toISOString()
+        };
+
+        renderRecommendation(selectedAnalysis, rec);
+        setStatus(`Loaded Discogs release ${item.id}.`);
+      } catch (error) {
+        setStatus(`Release analysis failed: ${error.message}`);
+        getEl('recommendationArea').innerHTML = '<div class="empty">Could not load marketplace stats for this release.</div>';
+      }
+    }
+
+    function renderRecommendation(analysis, rec) {
+      const discogsExists = true;
+      getEl('recommendationArea').innerHTML = `
+        <h3>${escapeHtml(analysis.title)}</h3>
+        <div class="pill ${rec.cls}">${escapeHtml(rec.label)}</div>
+        <div class="pill info">Found in Discogs</div>
+        <div class="stat"><span class="muted">Barcode</span><strong>${escapeHtml(analysis.barcode || 'Not scanned')}</strong></div>
+        <div class="stat"><span class="muted">Discogs release ID</span><strong>${escapeHtml(analysis.id)}</strong></div>
+        <div class="stat"><span class="muted">Median price</span><strong>${money(analysis.median, analysis.currency)}</strong></div>
+        <div class="stat"><span class="muted">Lowest current price</span><strong>${money(analysis.lowest, analysis.currency)}</strong></div>
+        <div class="stat"><span class="muted">Buy price</span><strong>${money(analysis.buyPrice)}</strong></div>
+        <div class="stat"><span class="muted">Discogs fee estimate</span><strong>${money(analysis.discogsCost, analysis.currency)}</strong></div>
+        <div class="stat"><span class="muted">PayPal fee estimate</span><strong>${money(analysis.paypalCost, analysis.currency)}</strong></div>
+        <div class="stat"><span class="muted">Estimated net profit</span><strong>${money(analysis.profit, analysis.currency)}</strong></div>
+        <div class="stat"><span class="muted">Demand signal</span><strong>${escapeHtml(analysis.demand)}</strong></div>
+        <div class="stat"><span class="muted">Want / For sale</span><strong>${analysis.want} / ${analysis.numForSale}</strong></div>
+        <div class="stat"><span class="muted">Have count</span><strong>${analysis.have}</strong></div>
+        <div class="row" style="margin-top: 14px;">
+          <button type="button" onclick="saveItem()">Save to Inventory</button>
+          <button type="button" class="secondary" onclick="recalculateRecommendation()">Recalculate</button>
+        </div>
+      `;
+    }
+
+    function recalculateRecommendation() {
+      if (!selectedAnalysis) return;
+      const buyPrice = getNumber('buyPrice');
+      const discogsFee = getNumber('discogsFee') / 100;
+      const paypalPct = getNumber('paypalPct') / 100;
+      const paypalFixed = getNumber('paypalFixed');
+      selectedAnalysis.buyPrice = buyPrice;
+      selectedAnalysis.discogsCost = selectedAnalysis.median * discogsFee;
+      selectedAnalysis.paypalCost = (selectedAnalysis.median * paypalPct) + paypalFixed;
+      selectedAnalysis.profit = selectedAnalysis.median - selectedAnalysis.discogsCost - selectedAnalysis.paypalCost - buyPrice;
+      const rec = scoreRecommendation(selectedAnalysis.profit, selectedAnalysis.demand, true);
+      selectedAnalysis.recommendation = rec.label;
+      renderRecommendation(selectedAnalysis, rec);
+    }
+
+    function loadInventory() {
+      try {
+        return JSON.parse(localStorage.getItem(inventoryKey) || '[]');
+      } catch (error) {
+        return [];
+      }
+    }
+
+    function saveInventory(items) {
+      localStorage.setItem(inventoryKey, JSON.stringify(items.slice(0, 200)));
+    }
+
+    function renderInventory() {
+      const items = loadInventory();
+      const area = getEl('inventoryArea');
+      if (!items.length) {
+        area.innerHTML = '<div class="empty">No saved items yet.</div>';
+        return;
+      }
+      area.innerHTML = `
+        <table>
+          <thead>
+            <tr>
+              <th>Title</th>
+              <th>Recommendation</th>
+              <th class="right">Profit</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${items.map((item) => `
+              <tr>
+                <td>${escapeHtml(item.title)}</td>
+                <td>${escapeHtml(item.recommendation)}</td>
+                <td class="right">${money(item.profit, item.currency || 'AUD')}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+    }
+
+    function saveItem() {
+      if (!selectedAnalysis) {
+        setStatus('Nothing to save yet. Analyse a release first.');
+        return;
+      }
+      const items = loadInventory();
+      items.unshift(selectedAnalysis);
+      saveInventory(items);
+      renderInventory();
+      setStatus('Saved to local inventory.');
+    }
+
+    function clearLookup() {
+      stopBarcodeScan();
+      getEl('barcode').value = '';
+      getEl('artist').value = '';
+      getEl('album').value = '';
+      currentCandidates = [];
+      selectedAnalysis = null;
+      getEl('candidateArea').innerHTML = '<div class="empty">No Discogs results yet.</div>';
+      getEl('recommendationArea').innerHTML = '<div class="empty">Select a Discogs release to analyse it.</div>';
+      setStatus('Ready.');
+    }
+
+    function useSampleBarcode() {
+      getEl('barcode').value = '731452422829';
+      getEl('artist').value = 'Massive Attack';
+      getEl('album').value = 'Mezzanine';
+      setStatus('Sample loaded. Tap Lookup Discogs.');
+    }
+
+    async function startBarcodeScan() {
+      if (!('mediaDevices' in navigator) || !navigator.mediaDevices.getUserMedia) {
+        setStatus('Camera access is not available in this browser.');
+        return;
+      }
+      if (!('BarcodeDetector' in window)) {
+        setStatus('Barcode scanning is not supported in this browser yet. Enter the barcode manually.');
+        return;
+      }
+
+      try {
+        stopBarcodeScan();
+        const preview = getEl('preview');
+        currentStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'environment' } },
+          audio: false
+        });
+        preview.srcObject = currentStream;
+        preview.style.display = 'block';
+        await preview.play();
+        const detector = new BarcodeDetector({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e'] });
+        setStatus('Scanning… point the camera at the barcode.');
+
+        const tick = async () => {
+          if (!currentStream) return;
+          try {
+            const codes = await detector.detect(preview);
+            if (codes.length) {
+              const value = codes[0].rawValue || '';
+              if (value) {
+                getEl('barcode').value = value;
+                stopBarcodeScan();
+                setStatus(`Scanned ${value}. Tap Lookup Discogs.`);
+                return;
+              }
+            }
+          } catch (error) {
+            setStatus('Barcode scan failed. You can still type the barcode manually.');
+            stopBarcodeScan();
+            return;
+          }
+          scanLoopHandle = requestAnimationFrame(tick);
+        };
+        tick();
+      } catch (error) {
+        setStatus(`Camera access failed: ${error.message}`);
+      }
+    }
+
+    function stopBarcodeScan() {
+      if (scanLoopHandle) {
+        cancelAnimationFrame(scanLoopHandle);
+        scanLoopHandle = null;
+      }
+      if (currentStream) {
+        currentStream.getTracks().forEach((track) => track.stop());
+        currentStream = null;
+      }
+      const preview = getEl('preview');
+      preview.pause();
+      preview.srcObject = null;
+      preview.style.display = 'none';
+    }
+
+    function attachListeners() {
+      getEl('token').addEventListener('change', saveToken);
+      ['buyPrice', 'discogsFee', 'paypalPct', 'paypalFixed'].forEach((id) => {
+        getEl(id).addEventListener('input', () => {
+          if (selectedAnalysis) recalculateRecommendation();
+        });
+      });
+    }
+
+    function runSelfTests() {
+      const tests = [
+        { profit: 2.9, demand: 'Medium', expected: 'Skip' },
+        { profit: 4.2, demand: 'Medium', expected: 'Maybe' },
+        { profit: 7.2, demand: 'Medium', expected: 'Buy' },
+        { profit: 12, demand: 'High', expected: 'Strong Buy' }
+      ];
+      const failed = tests.filter((test) => scoreRecommendation(test.profit, test.demand, true).label !== test.expected);
+      if (failed.length) {
+        console.error('Self-tests failed', failed);
+      }
+    }
+
+    loadToken();
+    attachListeners();
+    renderInventory();
+    runSelfTests();
+  </script>
+</body>
+</html>
