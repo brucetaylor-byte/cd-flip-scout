@@ -1,8 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#0f1115">
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Jas and Dad CD's Inc</title>
@@ -231,7 +229,7 @@
     <div class="card">
       <div class="row" style="justify-content: space-between; align-items: center;">
         <div>
-          <div class="title-wrap"><span class="logo">💿</span><h1 style="margin-bottom: 4px;">Jas and Bruce CD's Inc</h1></div>
+          <div class="title-wrap"><span class="logo">💿</span><h1 style="margin-bottom: 4px;">Jas and Dad CD's Inc</h1></div>
           <p class="sub">Discogs-first scout for CDs, records, DVDs, and other Discogs releases.</p>
         </div>
         <button type="button" class="secondary" id="settingsToggle" onclick="toggleSettings()" aria-expanded="false" aria-controls="settingsPanel">▼ Settings</button>
@@ -806,7 +804,6 @@
           <div class="stat"><span class="muted">Demand ratio</span><strong>${Number.isFinite(analysis.demandRatio) ? analysis.demandRatio.toFixed(2) : '—'}</strong></div>
           <div class="stat"><span class="muted">Want / For sale</span><strong>${analysis.want} / ${analysis.numForSale}</strong></div>
         </div>
-       
       `;
 
       if (rec.label === 'Buy' || rec.label === 'Strong Buy' || rec.label === 'Maybe') {
