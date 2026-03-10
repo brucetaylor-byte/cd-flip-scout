@@ -552,8 +552,8 @@
             <div class="candidate-title">${escapeHtml(title)}</div>
             <div class="candidate-meta">${escapeHtml(meta)}</div>
             <div class="row">
-              <button type="button" onclick="selectCandidate($1)">Use this release</button>
-              <button type="button" class="secondary" onclick="showCandidateInDiscogs($1)">Show in Discogs</button>
+              <button type="button" onclick="selectCandidate(${index})">Use this release</button>
+              <button type="button" class="secondary" onclick="showCandidateInDiscogs(${index})">Show in Discogs</button>
               <span class="small">Discogs ID: ${escapeHtml(item.id || '—')}</span>
             </div>
           </div>
@@ -700,6 +700,7 @@
         : '<div class="pill skip">No usable Discogs market price found</div><div class="small">This release has no usable median or lowest listing in the API response.</div>';
       getEl('recommendationArea').innerHTML = `
         <h3>${escapeHtml(analysis.title)}</h3>
+        <div class="small"><a href="${escapeHtml(analysis.discogsUrl)}" target="_blank" rel="noopener noreferrer" style="color: var(--blue); text-decoration: none; font-weight: 600;">Open this release in Discogs</a></div>
         <div class="pill ${rec.cls}">${escapeHtml(rec.label)}</div>
         <div class="pill info">Found in Discogs</div>
         ${marketMessage}
@@ -784,7 +785,7 @@
                 <td class="right">${item.profit == null ? '—' : money(item.profit)}</td>
                 <td>
                   <div class="row">
-                    <button type="button" class="secondary" onclick="openDiscogsUrl('${'${'}escapeHtml(item.discogsUrl || '')}')">Show</button>
+                    <button type="button" class="secondary" onclick="openDiscogsUrl('${item.discogsUrl || ''}')">Show</button>
                     <button type="button" class="secondary" onclick="showListForSale(${index})">List for sale</button>
                   </div>
                 </td>
