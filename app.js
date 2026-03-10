@@ -425,3 +425,21 @@ window.addEventListener("load",()=>{
   renderInventory();
 
 });
+window.lookupDiscogs = lookupDiscogs;
+window.startBarcodeScan = startBarcodeScan;
+window.clearLookup = clearLookup;
+window.useSampleBarcode = useSampleBarcode;
+window.toggleSettings = toggleSettings;
+window.toggleLookupPanel = toggleLookupPanel;
+window.showInventoryPage = showInventoryPage;
+window.hideInventoryPage = hideInventoryPage;
+window.exportInventoryCsv = exportInventoryCsv;
+window.triggerInstall = triggerInstall;
+window.selectCandidate = selectCandidate;
+window.showCandidateInDiscogs = showCandidateInDiscogs;
+window.expandCandidates = expandCandidates;
+window.toggleDetails = toggleDetails;
+window.saveItem = saveItem;
+window.openDiscogsUrl = openDiscogsUrl;
+window.removeInventoryItem = removeInventoryItem;
+window.updateInventoryField = updateInventoryField;
