@@ -307,14 +307,14 @@
           </select>
         </div>
       </div>
+      <div id="lookupStatus" class="status">Ready.</div>
+      <video id="preview" playsinline></video>
       <div class="row" style="margin-top: 14px;">
         <button type="button" onclick="startBarcodeScan()">Scan Barcode</button>
         <button type="button" onclick="lookupDiscogs()">Lookup Discogs</button>
         <button type="button" class="secondary" onclick="useSampleBarcode()">Use Sample</button>
         <button type="button" class="secondary" onclick="clearLookup()">Clear</button>
       </div>
-      <div id="lookupStatus" class="status">Ready.</div>
-      <video id="preview" playsinline></video>
     </div>
 
     <div class="card">
@@ -967,87 +967,4 @@
         preview.scrollIntoView({ behavior: 'smooth', block: 'start' });
         setTimeout(() => {
           preview.scrollIntoView({ behavior: 'smooth', block: 'start' });
-          const rect = preview.getBoundingClientRect();
-          window.scrollBy({ top: rect.top - 12, behavior: 'smooth' });
-        }, 150);
-        const detector = new BarcodeDetector({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e'] });
-        setStatus('Scanning… point the camera at the barcode.');
-
-        const tick = async () => {
-          if (!currentStream) return;
-          try {
-            const codes = await detector.detect(preview);
-            if (codes.length > 0) {
-              const value = codes[0].rawValue || '';
-              if (value) {
-                getEl('barcode').value = value;
-                stopBarcodeScan();
-                setStatus(`Scanned ${value}. Looking up Discogs…`);
-                lookupDiscogs();
-                return;
-              }
-            }
-          } catch (error) {
-            console.log('scan frame error', error);
-          }
-          scanLoopHandle = requestAnimationFrame(tick);
-        };
-        tick();
-      } catch (error) {
-        setStatus(`Camera access failed: ${error.message}`);
-      }
-    }
-
-    function stopBarcodeScan() {
-      if (scanLoopHandle) {
-        cancelAnimationFrame(scanLoopHandle);
-        scanLoopHandle = null;
-      }
-      if (currentStream) {
-        currentStream.getTracks().forEach((track) => track.stop());
-        currentStream = null;
-      }
-      const preview = getEl('preview');
-      preview.pause();
-      preview.srcObject = null;
-      preview.style.display = 'none';
-    }
-
-    function attachListeners() {
-      getEl('token').addEventListener('change', savePrefs);
-      getEl('fxRate').addEventListener('change', savePrefs);
-      ['buyPrice', 'discogsFee', 'paypalPct', 'paypalFixed', 'fxRate', 'formatFilter', 'ebayMedian', 'priceBlendMode'].forEach((id) => {
-        getEl(id).addEventListener('input', () => {
-          if (selectedAnalysis) recalculateRecommendation();
-        });
-        getEl(id).addEventListener('change', () => {
-          if (selectedAnalysis) recalculateRecommendation();
-        });
-      });
-    }
-
-    function runSelfTests() {
-      const failed = [];
-      if (scoreRecommendation(2.9, 'Medium', true, 'CD').label !== 'Skip') failed.push('cd skip');
-      if (scoreRecommendation(4.2, 'Medium', true, 'CD').label !== 'Maybe') failed.push('cd maybe');
-      if (scoreRecommendation(7.2, 'Medium', true, 'CD').label !== 'Buy') failed.push('cd buy');
-      if (scoreRecommendation(12, 'High', true, 'CD').label !== 'Strong Buy') failed.push('cd strong');
-      if (scoreRecommendation(11, 'High', true, 'Vinyl').label !== 'Buy') failed.push('vinyl threshold');
-      const strategy = buildListingStrategy(15, 12, 'Medium');
-      if (strategy.balanced !== 13 || strategy.quickSale !== 11.5 || strategy.maxProfit !== 15) failed.push('strategy');
-      getEl('ebayMedian').value = '20';
-      getEl('priceBlendMode').value = 'max';
-      if (getBlendedReferencePrice(15) !== 20) failed.push('blend max');
-      getEl('priceBlendMode').value = 'avg';
-      if (getBlendedReferencePrice(15) !== 17.5) failed.push('blend avg');
-      getEl('priceBlendMode').value = 'discogs';
-      if (failed.length) console.error('Self-tests failed', failed);
-    }
-
-    loadPrefs();
-    attachListeners();
-    renderInventory();
-    runSelfTests();
-  </script>
-</body>
-</html>
+          const rect = preview.
