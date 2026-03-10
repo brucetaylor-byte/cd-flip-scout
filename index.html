@@ -222,9 +222,6 @@
       margin-top: 12px;
     }
   </style>
-<link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#0f1115">
-<meta name="mobile-web-app-capable" content="yes">
 </head>
 <body>
   <div id="buyFlash">BUY!</div>
@@ -963,9 +960,11 @@
       try {
         stopBarcodeScan();
         const preview = getEl('preview');
+        preview.scrollIntoView({ behavior: 'smooth', block: 'start' });
         currentStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
         preview.srcObject = currentStream;
         preview.style.display = 'block';
+        preview.scrollIntoView({ behavior: 'smooth', block: 'start' });
         await preview.play();
         const detector = new BarcodeDetector({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e'] });
         setStatus('Scanning… point the camera at the barcode.');
@@ -1046,14 +1045,5 @@
     renderInventory();
     runSelfTests();
   </script>
-  <script>
-if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./sw.js")
-      .then(() => console.log("Service Worker registered"))
-      .catch(err => console.log("Service Worker failed", err));
-  });
-}
-</script>
 </body>
 </html>
