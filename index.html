@@ -191,8 +191,21 @@
           <label for="fxRate">FX rate to AUD</label>
           <input id="fxRate" type="number" min="0" step="0.0001" value="1.55" />
         </div>
+        <div>
+          <label for="ebayMedian">eBay AU sold median (AUD)</label>
+          <input id="ebayMedian" type="number" min="0" step="0.01" value="0" />
+        </div>
+        <div>
+          <label for="priceBlendMode">Pricing blend</label>
+          <select id="priceBlendMode">
+            <option value="discogs" selected>Discogs only</option>
+            <option value="max">Use higher of Discogs / eBay AU</option>
+            <option value="avg">Average Discogs / eBay AU</option>
+            <option value="ebay">eBay AU only</option>
+          </select>
+        </div>
       </div>
-      <div class="small">All displayed prices are converted to AUD. Catalog number search is included for older records with no barcode.</div>
+      <div class="small">All displayed prices are converted to AUD. Catalog number search is included for older records with no barcode. eBay AU balancing is currently supported through a manual sold-price input because a robust live eBay AU sold-listings feed needs a backend and API credentials.</div>
     </div>
 
     <div class="card">
@@ -334,6 +347,35 @@
       const balanced = suggestSellPrice(referenceAud, lowestAud, demandLabel);
       const maxProfit = roundSellPrice(Math.max(referenceAud, balanced));
       return { quickSale, balanced, maxProfit };
+    }
+
+    function getBlendedReferencePrice(discogsReferenceAud) {
+      const ebayMedian = getNumber('ebayMedian');
+      const mode = getEl('priceBlendMode').value;
+      const hasDiscogs = Number.isFinite(discogsReferenceAud) && discogsReferenceAud > 0;
+      const hasEbay = Number.isFinite(ebayMedian) && ebayMedian > 0;
+
+      if (mode === 'ebay') return hasEbay ? ebayMedian : 0;
+      if (mode === 'avg') {
+        if (hasDiscogs && hasEbay) return roundSellPrice((discogsReferenceAud + ebayMedian) / 2);
+        return hasDiscogs ? discogsReferenceAud : (hasEbay ? ebayMedian : 0);
+      }
+      if (mode === 'max') {
+        if (hasDiscogs && hasEbay) return Math.max(discogsReferenceAud, ebayMedian);
+        return hasDiscogs ? discogsReferenceAud : (hasEbay ? ebayMedian : 0);
+      }
+      return hasDiscogs ? discogsReferenceAud : 0;
+    }
+
+    function getPriceBasisLabel(discogsBasis, blendedReferenceAud) {
+      const ebayMedian = getNumber('ebayMedian');
+      const mode = getEl('priceBlendMode').value;
+      const hasEbay = Number.isFinite(ebayMedian) && ebayMedian > 0;
+      if (!hasEbay || mode === 'discogs') return discogsBasis;
+      if (mode === 'ebay') return 'eBay AU sold median';
+      if (mode === 'avg') return 'Blended average: Discogs + eBay AU';
+      if (mode === 'max') return blendedReferenceAud === ebayMedian ? 'eBay AU stronger than Discogs' : 'Discogs stronger than eBay AU';
+      return discogsBasis;
     }
 
     function calculateProfitFromSellPrice(sellPrice) {
@@ -530,8 +572,10 @@
         const rawCurrency = stats?.median_price?.currency || stats?.lowest_price?.currency || 'AUD';
         const medianAud = toAud(medianRaw, rawCurrency);
         const lowestAud = toAud(lowestRaw, rawCurrency);
-        const referenceAud = medianAud > 0 ? medianAud : lowestAud;
-        const priceBasis = medianAud > 0 ? 'Median sales history' : (lowestAud > 0 ? 'Lowest current listing' : 'No usable market data');
+        const discogsReferenceAud = medianAud > 0 ? medianAud : lowestAud;
+        const discogsPriceBasis = medianAud > 0 ? 'Median sales history' : (lowestAud > 0 ? 'Lowest current listing' : 'No usable market data');
+        const referenceAud = getBlendedReferencePrice(discogsReferenceAud);
+        const priceBasis = getPriceBasisLabel(discogsPriceBasis, referenceAud);
         const demand = calcDemand(stats, release);
         const formatCategory = getFormatCategory(release, item);
         const strategy = buildListingStrategy(referenceAud, lowestAud, demand.label);
@@ -548,8 +592,11 @@
           formatCategory,
           medianAud,
           lowestAud,
+          discogsReferenceAud,
           referenceAud,
           priceBasis,
+          ebayMedian: getNumber('ebayMedian'),
+          priceBlendMode: getEl('priceBlendMode').value,
           suggestedSellPrice: strategy.balanced,
           quickSalePrice: strategy.quickSale,
           maxProfitPrice: strategy.maxProfit,
@@ -583,6 +630,7 @@
       const marketMessage = hasMarketPrice
         ? `<div class="pill info">Price basis: ${escapeHtml(analysis.priceBasis)}</div>`
         : '<div class="pill skip">No usable Discogs market price found</div><div class="small">This release has no usable median or lowest listing in the API response.</div>';
+
       getEl('recommendationArea').innerHTML = `
         <h3>${escapeHtml(analysis.title)}</h3>
         <div class="pill ${rec.cls}">${escapeHtml(rec.label)}</div>
@@ -594,7 +642,70 @@
         <div class="stat"><span class="muted">Discogs release ID</span><strong>${escapeHtml(analysis.id)}</strong></div>
         <div class="stat"><span class="muted">Median price (AUD)</span><strong>${money(analysis.medianAud)}</strong></div>
         <div class="stat"><span class="muted">Lowest current price (AUD)</span><strong>${money(analysis.lowestAud)}</strong></div>
+        <div class="stat"><span class="muted">Discogs reference price (AUD)</span><strong>${money(analysis.discogsReferenceAud)}</strong></div>
+        <div class="stat"><span class="muted">eBay AU sold median (AUD)</span><strong>${money(analysis.ebayMedian)}</strong></div>
         <div class="stat"><span class="muted">Reference market price (AUD)</span><strong>${money(analysis.referenceAud)}</strong></div>
+        <div class="stat"><span class="muted">Blend mode</span><strong>${escapeHtml(analysis.priceBlendMode || 'discogs')}</strong></div>
+        <div class="stat"><span class="muted">Best listing price: quick sale</span><strong>${money(analysis.quickSalePrice)}</strong></div>
+        <div class="stat"><span class="muted">Best listing price: balanced</span><strong>${money(analysis.suggestedSellPrice)}</strong></div>
+        <div class="stat"><span class="muted">Best listing price: max profit</span><strong>${money(analysis.maxProfitPrice)}</strong></div>
+        <div class="stat"><span class="muted">Quick-sale profit (AUD)</span><strong>${analysis.quickProfit == null ? '—' : money(analysis.quickProfit)}</strong></div>
+        <div class="stat"><span class="muted">Balanced profit (AUD)</span><strong>${analysis.profit == null ? '—' : money(analysis.profit)}</strong></div>
+        <div class="stat"><span class="muted">Max-profit profit (AUD)</span><strong>${analysis.maxProfit == null ? '—' : money(analysis.maxProfit)}</strong></div>
+        <div class="stat"><span class="muted">Demand signal</span><strong>${escapeHtml(analysis.demand)}</strong></div>
+        <div class="stat"><span class="muted">Demand ratio</span><strong>${Number.isFinite(analysis.demandRatio) ? analysis.demandRatio.toFixed(2) : '—'}</strong></div>
+        <div class="row" style="margin-top: 14px;">
+          <button type="button" onclick="saveItem()">Save to Inventory</button>
+          <button type="button" class="secondary" onclick="recalculateRecommendation()">Recalculate</button>
+        </div>
+      `;
+
+      // BIG BUY FLASH
+      if (rec.label === 'Buy' || rec.label === 'Strong Buy') {
+        showBuyFlash();
+      }
+    }
+
+    function showBuyFlash() {
+      let flash = document.getElementById('buyFlash');
+      if (!flash) {
+        flash = document.createElement('div');
+        flash.id = 'buyFlash';
+        flash.style.position = 'fixed';
+        flash.style.top = '0';
+        flash.style.left = '0';
+        flash.style.right = '0';
+        flash.style.bottom = '0';
+        flash.style.background = 'rgba(0,200,0,0.9)';
+        flash.style.display = 'flex';
+        flash.style.alignItems = 'center';
+        flash.style.justifyContent = 'center';
+        flash.style.fontSize = '80px';
+        flash.style.fontWeight = '900';
+        flash.style.color = '#fff';
+        flash.style.zIndex = '9999';
+        flash.style.opacity = '0';
+        flash.style.transition = 'opacity 0.4s ease';
+        flash.innerText = 'BUY!';
+        document.body.appendChild(flash);
+      }
+
+      flash.style.opacity = '1';
+
+      setTimeout(() => {
+        flash.style.opacity = '0';
+      }, 1200);
+    }
+        <div class="stat"><span class="muted">Barcode</span><strong>${escapeHtml(analysis.barcode || 'Not scanned')}</strong></div>
+        <div class="stat"><span class="muted">Catalog number</span><strong>${escapeHtml(analysis.catno || '—')}</strong></div>
+        <div class="stat"><span class="muted">Format</span><strong>${escapeHtml(analysis.formatCategory || 'Other')}</strong></div>
+        <div class="stat"><span class="muted">Discogs release ID</span><strong>${escapeHtml(analysis.id)}</strong></div>
+        <div class="stat"><span class="muted">Median price (AUD)</span><strong>${money(analysis.medianAud)}</strong></div>
+        <div class="stat"><span class="muted">Lowest current price (AUD)</span><strong>${money(analysis.lowestAud)}</strong></div>
+        <div class="stat"><span class="muted">Discogs reference price (AUD)</span><strong>${money(analysis.discogsReferenceAud)}</strong></div>
+        <div class="stat"><span class="muted">eBay AU sold median (AUD)</span><strong>${money(analysis.ebayMedian)}</strong></div>
+        <div class="stat"><span class="muted">Reference market price (AUD)</span><strong>${money(analysis.referenceAud)}</strong></div>
+        <div class="stat"><span class="muted">Blend mode</span><strong>${escapeHtml(analysis.priceBlendMode || 'discogs')}</strong></div>
         <div class="stat"><span class="muted">Best listing price: quick sale</span><strong>${money(analysis.quickSalePrice)}</strong></div>
         <div class="stat"><span class="muted">Best listing price: balanced</span><strong>${money(analysis.suggestedSellPrice)}</strong></div>
         <div class="stat"><span class="muted">Best listing price: max profit</span><strong>${money(analysis.maxProfitPrice)}</strong></div>
@@ -616,6 +727,10 @@
 
     function recalculateRecommendation() {
       if (!selectedAnalysis) return;
+      selectedAnalysis.ebayMedian = getNumber('ebayMedian');
+      selectedAnalysis.priceBlendMode = getEl('priceBlendMode').value;
+      selectedAnalysis.referenceAud = getBlendedReferencePrice(selectedAnalysis.discogsReferenceAud);
+      selectedAnalysis.priceBasis = getPriceBasisLabel(selectedAnalysis.medianAud > 0 ? 'Median sales history' : (selectedAnalysis.lowestAud > 0 ? 'Lowest current listing' : 'No usable market data'), selectedAnalysis.referenceAud);
       const strategy = buildListingStrategy(selectedAnalysis.referenceAud, selectedAnalysis.lowestAud, selectedAnalysis.demand);
       const balancedMath = strategy.balanced > 0 ? calculateProfitFromSellPrice(strategy.balanced) : { discogsCost: 0, paypalCost: 0, profit: null };
       const quickMath = strategy.quickSale > 0 ? calculateProfitFromSellPrice(strategy.quickSale) : { profit: null };
@@ -685,6 +800,8 @@
       currentCandidates = [];
       selectedAnalysis = null;
       candidateCollapsed = false;
+      getEl('ebayMedian').value = '0';
+      getEl('priceBlendMode').value = 'discogs';
       getEl('candidateArea').innerHTML = '<div class="empty">No Discogs results yet.</div>';
       getEl('recommendationArea').innerHTML = '<div class="empty">Select a Discogs release to analyse it.</div>';
       setStatus('Ready.');
@@ -696,6 +813,8 @@
       getEl('artist').value = 'Massive Attack';
       getEl('album').value = 'Mezzanine';
       getEl('formatFilter').value = 'CD';
+      getEl('ebayMedian').value = '9.50';
+      getEl('priceBlendMode').value = 'max';
       setStatus('Sample loaded. Tap Lookup Discogs.');
     }
 
@@ -724,7 +843,8 @@
               if (value) {
                 getEl('barcode').value = value;
                 stopBarcodeScan();
-                setStatus(`Scanned ${value}. Tap Lookup Discogs.`);
+                setStatus(`Scanned ${value}. Looking up Discogs…`);
+                lookupDiscogs();
                 return;
               }
             }
@@ -754,7 +874,7 @@
     function attachListeners() {
       getEl('token').addEventListener('change', savePrefs);
       getEl('fxRate').addEventListener('change', savePrefs);
-      ['buyPrice', 'discogsFee', 'paypalPct', 'paypalFixed', 'fxRate', 'formatFilter'].forEach((id) => {
+      ['buyPrice', 'discogsFee', 'paypalPct', 'paypalFixed', 'fxRate', 'formatFilter', 'ebayMedian', 'priceBlendMode'].forEach((id) => {
         getEl(id).addEventListener('input', () => { if (selectedAnalysis) recalculateRecommendation(); });
       });
     }
@@ -770,6 +890,12 @@
       if (getFormatCategory({ formats: [{ name: 'DVD' }] }, null) !== 'DVD') failed.push('dvd detect');
       const strategy = buildListingStrategy(15, 12, 'Medium');
       if (strategy.balanced !== 13 || strategy.quickSale !== 11.5 || strategy.maxProfit !== 15) failed.push('strategy');
+      getEl('ebayMedian').value = '20';
+      getEl('priceBlendMode').value = 'max';
+      if (getBlendedReferencePrice(15) !== 20) failed.push('blend max');
+      getEl('priceBlendMode').value = 'avg';
+      if (getBlendedReferencePrice(15) !== 17.5) failed.push('blend avg');
+      getEl('priceBlendMode').value = 'discogs';
       if (failed.length) console.error('Self-tests failed', failed);
     }
 
