@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CD Flip Scout Live</title>
+  <title>Jas and Bruce CD's Inc</title>
   <style>
     :root {
       --bg: #0f1115;
@@ -219,7 +219,7 @@
     <div class="card">
       <div class="row" style="justify-content: space-between; align-items: center;">
         <div>
-          <h1 style="margin-bottom: 4px;">CD Flip Scout Live</h1>
+          <h1 style="margin-bottom: 4px;">Jas and Bruce CD's Inc</h1>
           <p class="sub">Discogs-first scout for CDs, records, DVDs, and other Discogs releases.</p>
         </div>
         <button type="button" class="secondary" id="settingsToggle" onclick="toggleSettings()" aria-expanded="false" aria-controls="settingsPanel">▼ Settings</button>
@@ -749,40 +749,62 @@
 
     function renderRecommendation(analysis, rec) {
       const hasMarketPrice = analysis.referenceAud > 0 && analysis.suggestedSellPrice > 0;
+
+      const summarySentence = hasMarketPrice
+        ? `${rec.label.toUpperCase()} — list at ${money(analysis.suggestedSellPrice)} for about ${analysis.profit == null ? '—' : money(analysis.profit)} profit`
+        : 'No usable market price found';
+
       const marketMessage = hasMarketPrice
         ? `<div class="pill info">Price basis: ${escapeHtml(analysis.priceBasis)}</div>`
-        : '<div class="pill skip">No usable Discogs market price found</div><div class="small">This release has no usable median or lowest listing in the API response.</div>';
+        : `<div class="pill skip">No usable Discogs market price found</div>`;
+
       getEl('recommendationArea').innerHTML = `
         <h3>${escapeHtml(analysis.title)}</h3>
-        <div class="small"><a href="${escapeHtml(analysis.discogsUrl)}" target="_blank" rel="noopener noreferrer" style="color: var(--blue); text-decoration: none; font-weight: 600;">Open this release in Discogs</a></div>
-        <div class="pill ${rec.cls}">${escapeHtml(rec.label)}</div>
-        <div class="pill info">Found in Discogs</div>
+
+        <div class="pill ${rec.cls}" style="font-size:20px; padding:12px 18px;">${escapeHtml(rec.label)}</div>
+
+        <div style="font-size:18px; font-weight:700; margin-top:10px;">${escapeHtml(summarySentence)}</div>
+
+        <div class="stat"><span class="muted">Estimated profit</span><strong>${analysis.profit == null ? '—' : money(analysis.profit)}</strong></div>
+        <div class="stat"><span class="muted">Suggested list price</span><strong>${money(analysis.suggestedSellPrice)}</strong></div>
+        <div class="stat"><span class="muted">Demand</span><strong>${escapeHtml(analysis.demand)}</strong></div>
+
         ${marketMessage}
-        <div class="stat"><span class="muted">Barcode</span><strong>${escapeHtml(analysis.barcode || 'Not scanned')}</strong></div>
-        <div class="stat"><span class="muted">Catalog number</span><strong>${escapeHtml(analysis.catno || '—')}</strong></div>
-        <div class="stat"><span class="muted">Format</span><strong>${escapeHtml(analysis.formatCategory || 'Other')}</strong></div>
-        <div class="stat"><span class="muted">Discogs release ID</span><strong>${escapeHtml(analysis.id)}</strong></div>
-        <div class="stat"><span class="muted">Median price (AUD)</span><strong>${money(analysis.medianAud)}</strong></div>
-        <div class="stat"><span class="muted">Lowest current price (AUD)</span><strong>${money(analysis.lowestAud)}</strong></div>
-        <div class="stat"><span class="muted">Discogs reference price (AUD)</span><strong>${money(analysis.discogsReferenceAud)}</strong></div>
-        <div class="stat"><span class="muted">eBay AU sold median (AUD)</span><strong>${money(analysis.ebayMedian)}</strong></div>
-        <div class="stat"><span class="muted">Reference market price (AUD)</span><strong>${money(analysis.referenceAud)}</strong></div>
-        <div class="stat"><span class="muted">Blend mode</span><strong>${escapeHtml(analysis.priceBlendMode || 'discogs')}</strong></div>
-        <div class="stat"><span class="muted">Best listing price: quick sale</span><strong>${money(analysis.quickSalePrice)}</strong></div>
-        <div class="stat"><span class="muted">Best listing price: balanced</span><strong>${money(analysis.suggestedSellPrice)}</strong></div>
-        <div class="stat"><span class="muted">Best listing price: max profit</span><strong>${money(analysis.maxProfitPrice)}</strong></div>
-        <div class="stat"><span class="muted">Quick-sale profit (AUD)</span><strong>${analysis.quickProfit == null ? '—' : money(analysis.quickProfit)}</strong></div>
-        <div class="stat"><span class="muted">Balanced profit (AUD)</span><strong>${analysis.profit == null ? '—' : money(analysis.profit)}</strong></div>
-        <div class="stat"><span class="muted">Max-profit profit (AUD)</span><strong>${analysis.maxProfit == null ? '—' : money(analysis.maxProfit)}</strong></div>
-        <div class="stat"><span class="muted">Demand signal</span><strong>${escapeHtml(analysis.demand)}</strong></div>
-        <div class="stat"><span class="muted">Demand ratio</span><strong>${Number.isFinite(analysis.demandRatio) ? analysis.demandRatio.toFixed(2) : '—'}</strong></div>
-        <div class="row" style="margin-top: 14px;">
+
+        <div class="row" style="margin-top:14px;">
           <button type="button" onclick="saveItem()">Add to Inventory</button>
-          <button type="button" class="secondary" onclick="openDiscogsUrl(analysis.discogsUrl)">Show in Discogs</button>
-          <button type="button" class="secondary" onclick="recalculateRecommendation()">Recalculate</button>
+          <button type="button" class="secondary" onclick="openDiscogsUrl(analysis.discogsUrl)">Open in Discogs</button>
+          <button type="button" class="secondary" onclick="toggleDetails()">More details</button>
+        </div>
+
+        <div id="detailsPanel" style="display:none; margin-top:14px;">
+          <div class="stat"><span class="muted">Barcode</span><strong>${escapeHtml(analysis.barcode || 'Not scanned')}</strong></div>
+          <div class="stat"><span class="muted">Catalog number</span><strong>${escapeHtml(analysis.catno || '—')}</strong></div>
+          <div class="stat"><span class="muted">Format</span><strong>${escapeHtml(analysis.formatCategory || 'Other')}</strong></div>
+          <div class="stat"><span class="muted">Discogs release ID</span><strong>${escapeHtml(analysis.id)}</strong></div>
+
+          <div class="stat"><span class="muted">Median price (AUD)</span><strong>${money(analysis.medianAud)}</strong></div>
+          <div class="stat"><span class="muted">Lowest listing (AUD)</span><strong>${money(analysis.lowestAud)}</strong></div>
+          <div class="stat"><span class="muted">Discogs reference price</span><strong>${money(analysis.discogsReferenceAud)}</strong></div>
+          <div class="stat"><span class="muted">eBay AU median</span><strong>${money(analysis.ebayMedian)}</strong></div>
+
+          <div class="stat"><span class="muted">Quick-sale price</span><strong>${money(analysis.quickSalePrice)}</strong></div>
+          <div class="stat"><span class="muted">Max-profit price</span><strong>${money(analysis.maxProfitPrice)}</strong></div>
+
+          <div class="stat"><span class="muted">Demand ratio</span><strong>${Number.isFinite(analysis.demandRatio) ? analysis.demandRatio.toFixed(2) : '—'}</strong></div>
+          <div class="stat"><span class="muted">Want / For sale</span><strong>${analysis.want} / ${analysis.numForSale}</strong></div>
         </div>
       `;
-      showDecisionFlash(rec.label);
+
+      if (rec.label === 'Buy' || rec.label === 'Strong Buy' || rec.label === 'Maybe') {
+        showDecisionFlash(rec.label);
+      }
+    }
+
+    function toggleDetails() {
+      const panel = getEl('detailsPanel');
+      if (!panel) return;
+      panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
     }
 
     function recalculateRecommendation() {
