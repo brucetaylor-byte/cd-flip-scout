@@ -313,27 +313,27 @@
       return Math.round(value * 2) / 2;
     }
 
-    function suggestSellPrice(medianAud, lowestAud, demandLabel) {
-      if (!Number.isFinite(medianAud) || medianAud <= 0) return 0;
+    function suggestSellPrice(referenceAud, lowestAud, demandLabel) {
+      if (!Number.isFinite(referenceAud) || referenceAud <= 0) return 0;
       if (demandLabel === 'High') {
-        return roundSellPrice(Math.max(medianAud, lowestAud || 0));
+        return roundSellPrice(Math.max(referenceAud, lowestAud || 0));
       }
       if (demandLabel === 'Medium') {
         if (Number.isFinite(lowestAud) && lowestAud > 0) {
-          return roundSellPrice(Math.min(medianAud, lowestAud + 1));
+          return roundSellPrice(Math.min(referenceAud, lowestAud + 1));
         }
-        return roundSellPrice(medianAud);
+        return roundSellPrice(referenceAud);
       }
       if (Number.isFinite(lowestAud) && lowestAud > 0) {
         return roundSellPrice(Math.max(lowestAud - 0.5, 0));
       }
-      return roundSellPrice(medianAud);
+      return roundSellPrice(referenceAud);
     }
 
-    function buildListingStrategy(medianAud, lowestAud, demandLabel) {
-      const quickSale = suggestSellPrice(medianAud, lowestAud, 'Low');
-      const balanced = suggestSellPrice(medianAud, lowestAud, demandLabel);
-      const maxProfit = roundSellPrice(Math.max(medianAud, balanced));
+    function buildListingStrategy(referenceAud, lowestAud, demandLabel) {
+      const quickSale = suggestSellPrice(referenceAud, lowestAud, 'Low');
+      const balanced = suggestSellPrice(referenceAud, lowestAud, demandLabel);
+      const maxProfit = roundSellPrice(Math.max(referenceAud, balanced));
       return { quickSale, balanced, maxProfit };
     }
 
@@ -547,36 +547,18 @@
         const lowestRaw = Number(stats?.lowest_price?.value ?? 0);
         const rawCurrency = stats?.median_price?.currency || stats?.lowest_price?.currency || 'AUD';
         const medianAud = toAud(medianRaw, rawCurrency);
-const lowestAud = toAud(lowestRaw, rawCurrency);
-const usableMarketPriceAud = medianAud > 0 ? medianAud : (lowestAud > 0 ? lowestAud : 0);
-const buyPrice = getNumber('buyPrice');
-const demand = calcDemand(stats, release);
-
-const hasMarketData = usableMarketPriceAud > 0;
-
-const strategy = hasMarketData
-  ? buildListingStrategy(usableMarketPriceAud, lowestAud, demand.label)
-  : { quickSale: 0, balanced: 0, maxProfit: 0 };
-
-const suggestedSellPrice = strategy.balanced;
-
-const suggestedMath = hasMarketData
-  ? calculateProfitFromSellPrice(suggestedSellPrice)
-  : { discogsCost: 0, paypalCost: 0, profit: null };
-
-const quickMath = hasMarketData
-  ? calculateProfitFromSellPrice(strategy.quickSale)
-  : { profit: null };
-
-const maxMath = hasMarketData
-  ? calculateProfitFromSellPrice(strategy.maxProfit)
-  : { profit: null };
-
-const profit = suggestedMath.profit;
-
-const rec = hasMarketData
-  ? scoreRecommendation(profit, demand.label, true)
-  : { label: 'No market data', cls: 'skip' };
+        const lowestAud = toAud(lowestRaw, rawCurrency);
+        const referenceAud = medianAud > 0 ? medianAud : lowestAud;
+        const priceBasis = medianAud > 0 ? 'Median sales history' : (lowestAud > 0 ? 'Lowest current listing' : 'No usable market data');
+        const buyPrice = getNumber('buyPrice');
+        const demand = calcDemand(stats, release);
+        const strategy = buildListingStrategy(referenceAud, lowestAud, demand.label);
+        const suggestedSellPrice = strategy.balanced;
+        const suggestedMath = calculateProfitFromSellPrice(suggestedSellPrice);
+        const quickMath = calculateProfitFromSellPrice(strategy.quickSale);
+        const maxMath = calculateProfitFromSellPrice(strategy.maxProfit);
+        const profit = suggestedMath.profit;
+        const rec = scoreRecommendation(profit, demand.label, true);
         const title = [release.artists_sort || '', release.title || 'Untitled release'].filter(Boolean).join(' – ');
 
         selectedAnalysis = {
@@ -584,6 +566,8 @@ const rec = hasMarketData
           title,
           barcode: getEl('barcode').value.trim(),
           medianAud,
+          referenceAud,
+          priceBasis,
           lowestAud,
           suggestedSellPrice,
           quickSalePrice: strategy.quickSale,
@@ -614,10 +598,10 @@ const rec = hasMarketData
     }
 
     function renderRecommendation(analysis, rec) {
-      const hasMarketPrice = analysis.suggestedSellPrice > 0;
+      const hasMarketPrice = analysis.referenceAud > 0 && analysis.suggestedSellPrice > 0;
       const marketMessage = hasMarketPrice
-        ? ''
-        : '<div class="pill skip">No usable Discogs market price found</div><div class="small">Discogs returned no median price for this release, so the profit estimate is not meaningful yet.</div>';
+        ? `<div class="pill info">Price basis: ${escapeHtml(analysis.priceBasis)}</div>`
+        : '<div class="pill skip">No usable Discogs market price found</div><div class="small">Discogs API does not reliably expose median sales history for every release through the endpoint this prototype uses. When median is missing, the app now falls back to the lowest current listing if available.</div>'; 
 
       getEl('recommendationArea').innerHTML = `
         <h3>${escapeHtml(analysis.title)}</h3>
@@ -628,6 +612,7 @@ const rec = hasMarketData
         <div class="stat"><span class="muted">Discogs release ID</span><strong>${escapeHtml(analysis.id)}</strong></div>
         <div class="stat"><span class="muted">Median price (AUD)</span><strong>${money(analysis.medianAud)}</strong></div>
         <div class="stat"><span class="muted">Lowest current price (AUD)</span><strong>${money(analysis.lowestAud)}</strong></div>
+        <div class="stat"><span class="muted">Reference market price (AUD)</span><strong>${money(analysis.referenceAud)}</strong></div>
         <div class="stat"><span class="muted">Best listing price: quick sale</span><strong>${money(analysis.quickSalePrice)}</strong></div>
         <div class="stat"><span class="muted">Best listing price: balanced</span><strong>${money(analysis.suggestedSellPrice)}</strong></div>
         <div class="stat"><span class="muted">Best listing price: max profit</span><strong>${money(analysis.maxProfitPrice)}</strong></div>
@@ -649,7 +634,7 @@ const rec = hasMarketData
 
     function recalculateRecommendation() {
       if (!selectedAnalysis) return;
-      const strategy = buildListingStrategy(selectedAnalysis.medianAud, selectedAnalysis.lowestAud, selectedAnalysis.demand);
+      const strategy = buildListingStrategy(selectedAnalysis.referenceAud, selectedAnalysis.lowestAud, selectedAnalysis.demand);
       const balancedMath = calculateProfitFromSellPrice(strategy.balanced);
       const quickMath = calculateProfitFromSellPrice(strategy.quickSale);
       const maxMath = calculateProfitFromSellPrice(strategy.maxProfit);
@@ -823,7 +808,8 @@ const rec = hasMarketData
         { profit: 12, demand: 'High', expected: 'Strong Buy' },
         { suggested: suggestSellPrice(15.1, 13.4, 'High'), expectedSuggested: 15.5 },
         { suggested: suggestSellPrice(15.1, 13.4, 'Low'), expectedSuggested: 13.0 },
-        { strategy: buildListingStrategy(15, 12, 'Medium'), expectedBalanced: 13.0, expectedQuick: 11.5, expectedMax: 15.0 }
+        { strategy: buildListingStrategy(15, 12, 'Medium'), expectedBalanced: 13.0, expectedQuick: 11.5, expectedMax: 15.0 },
+        { strategy: buildListingStrategy(0, 12, 'Medium'), expectedBalanced: 0, expectedQuick: 0, expectedMax: 0 }
       ];
       const failed = [];
       if (scoreRecommendation(tests[0].profit, tests[0].demand, true).label !== tests[0].expected) failed.push(tests[0]);
@@ -833,6 +819,7 @@ const rec = hasMarketData
       if (tests[4].suggested !== tests[4].expectedSuggested) failed.push(tests[4]);
       if (tests[5].suggested !== tests[5].expectedSuggested) failed.push(tests[5]);
       if (tests[6].strategy.balanced !== tests[6].expectedBalanced || tests[6].strategy.quickSale !== tests[6].expectedQuick || tests[6].strategy.maxProfit !== tests[6].expectedMax) failed.push(tests[6]);
+      if (tests[7].strategy.balanced !== tests[7].expectedBalanced || tests[7].strategy.quickSale !== tests[7].expectedQuick || tests[7].strategy.maxProfit !== tests[7].expectedMax) failed.push(tests[7]);
       if (failed.length) console.error('Self-tests failed', failed);
     }
 
