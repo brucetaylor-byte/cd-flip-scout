@@ -957,14 +957,82 @@
         setStatus('Barcode scanning is not supported in this browser yet. Enter the barcode manually.');
         return;
       }
+
       try {
         stopBarcodeScan();
         const preview = getEl('preview');
-        currentStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
+
+        currentStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'environment' } },
+          audio: false
+        });
+
         preview.srcObject = currentStream;
         preview.style.display = 'block';
         await preview.play();
+
         preview.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        setTimeout(() => {
-          preview.scrollIntoView({ behavior: 'smooth', block: 'start' });
-          const rect = preview.
+
+        const detector = new BarcodeDetector({ formats: ['ean_13','ean_8','upc_a','upc_e'] });
+
+        const scanFrame = async () => {
+          if (!currentStream) return;
+
+          try {
+            const codes = await detector.detect(preview);
+            if (codes.length > 0) {
+              const value = codes[0].rawValue || '';
+              if (value) {
+                getEl('barcode').value = value;
+                setStatus(`Scanned ${value}. Looking up Discogs…`);
+                stopBarcodeScan();
+                lookupDiscogs();
+                return;
+              }
+            }
+          } catch (e) {
+            console.log('scan error', e);
+          }
+
+          scanLoopHandle = requestAnimationFrame(scanFrame);
+        };
+
+        setStatus('Scanning… point camera at barcode.');
+        scanLoopHandle = requestAnimationFrame(scanFrame);
+
+      } catch (err) {
+        setStatus(`Camera access failed: ${err.message}`);
+        stopBarcodeScan();
+      }
+    }
+
+    function stopBarcodeScan() {
+      if (scanLoopHandle) {
+        cancelAnimationFrame(scanLoopHandle);
+        scanLoopHandle = null;
+      }
+
+      if (currentStream) {
+        currentStream.getTracks().forEach(t => t.stop());
+        currentStream = null;
+      }
+
+      const preview = getEl('preview');
+      if (preview) {
+        try { preview.pause(); } catch {}
+        preview.srcObject = null;
+        preview.style.display = 'none';
+      }
+    }
+
+    document.addEventListener('input', (e) => {
+      if (['buyPrice','discogsFee','paypalPct','paypalFixed','ebayMedian','priceBlendMode'].includes(e.target.id)) {
+        recalculateRecommendation();
+      }
+    });
+
+    loadPrefs();
+    renderInventory();
+  </script>
+</body>
+</html>
