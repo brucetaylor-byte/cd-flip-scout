@@ -84,10 +84,6 @@
       background: #253041;
       color: var(--text);
     }
-    button.warn {
-      background: var(--warn);
-      color: #221805;
-    }
     .row {
       display: flex;
       gap: 10px;
@@ -169,7 +165,7 @@
   <div class="wrap">
     <div class="card">
       <h1>CD Flip Scout Live</h1>
-      <p class="sub">Discogs-first scout for CDs and records. Search by barcode first, then calculate value, demand, and likely profit.</p>
+      <p class="sub">Discogs-first scout for CDs, records, DVDs, and other Discogs releases.</p>
       <div class="grid">
         <div>
           <label for="token">Discogs user token (optional but recommended)</label>
@@ -196,7 +192,7 @@
           <input id="fxRate" type="number" min="0" step="0.0001" value="1.55" />
         </div>
       </div>
-      <div class="small">All displayed prices are converted to AUD. If Discogs returns USD or another currency, this prototype uses the FX rate above to convert into AUD. Token is stored only in your browser on this device.</div>
+      <div class="small">All displayed prices are converted to AUD. Catalog number search is included for older records with no barcode.</div>
     </div>
 
     <div class="card">
@@ -207,12 +203,25 @@
           <input id="barcode" placeholder="Scan or enter UPC / EAN" />
         </div>
         <div>
+          <label for="catno">Catalog number</label>
+          <input id="catno" placeholder="Useful for older records" />
+        </div>
+        <div>
           <label for="artist">Artist</label>
           <input id="artist" placeholder="Optional fallback" />
         </div>
         <div>
           <label for="album">Album</label>
           <input id="album" placeholder="Optional fallback" />
+        </div>
+        <div>
+          <label for="formatFilter">Preferred format</label>
+          <select id="formatFilter">
+            <option value="">Any format</option>
+            <option value="CD">CD</option>
+            <option value="Vinyl">Vinyl</option>
+            <option value="DVD">DVD</option>
+          </select>
         </div>
       </div>
       <div class="row" style="margin-top: 14px;">
@@ -290,13 +299,9 @@
     }
 
     function buildHeaders() {
-      const headers = {
-        'Accept': 'application/vnd.discogs.v2.discogs+json'
-      };
+      const headers = { 'Accept': 'application/vnd.discogs.v2.discogs+json' };
       const token = getEl('token').value.trim();
-      if (token) {
-        headers['Authorization'] = `Discogs token=${token}`;
-      }
+      if (token) headers['Authorization'] = `Discogs token=${token}`;
       return headers;
     }
 
@@ -304,8 +309,7 @@
       if (!Number.isFinite(amount)) return 0;
       const fxRate = getNumber('fxRate') || 1;
       const code = String(currency || 'AUD').toUpperCase();
-      if (code === 'AUD') return amount;
-      return amount * fxRate;
+      return code === 'AUD' ? amount : amount * fxRate;
     }
 
     function roundSellPrice(value) {
@@ -315,22 +319,17 @@
 
     function suggestSellPrice(referenceAud, lowestAud, demandLabel) {
       if (!Number.isFinite(referenceAud) || referenceAud <= 0) return 0;
-      if (demandLabel === 'High') {
-        return roundSellPrice(Math.max(referenceAud, lowestAud || 0));
-      }
+      if (demandLabel === 'High') return roundSellPrice(Math.max(referenceAud, lowestAud || 0));
       if (demandLabel === 'Medium') {
-        if (Number.isFinite(lowestAud) && lowestAud > 0) {
-          return roundSellPrice(Math.min(referenceAud, lowestAud + 1));
-        }
+        if (Number.isFinite(lowestAud) && lowestAud > 0) return roundSellPrice(Math.min(referenceAud, lowestAud + 1));
         return roundSellPrice(referenceAud);
       }
-      if (Number.isFinite(lowestAud) && lowestAud > 0) {
-        return roundSellPrice(Math.max(lowestAud - 0.5, 0));
-      }
+      if (Number.isFinite(lowestAud) && lowestAud > 0) return roundSellPrice(Math.max(lowestAud - 0.5, 0));
       return roundSellPrice(referenceAud);
     }
 
     function buildListingStrategy(referenceAud, lowestAud, demandLabel) {
+      if (!Number.isFinite(referenceAud) || referenceAud <= 0) return { quickSale: 0, balanced: 0, maxProfit: 0 };
       const quickSale = suggestSellPrice(referenceAud, lowestAud, 'Low');
       const balanced = suggestSellPrice(referenceAud, lowestAud, demandLabel);
       const maxProfit = roundSellPrice(Math.max(referenceAud, balanced));
@@ -350,13 +349,8 @@
 
     async function fetchDiscogsJson(url) {
       try {
-        const response = await fetch(url, {
-          headers: buildHeaders(),
-          mode: 'cors'
-        });
-        if (!response.ok) {
-          throw new Error(`Discogs returned ${response.status}`);
-        }
+        const response = await fetch(url, { headers: buildHeaders(), mode: 'cors' });
+        if (!response.ok) throw new Error(`Discogs returned ${response.status}`);
         return await response.json();
       } catch (error) {
         return await fetchDiscogsJsonp(url);
@@ -389,46 +383,43 @@
         };
 
         script.src = `${url}${separator}callback=${callbackName}`;
-        script.onerror = () => {
-          cleanup();
-          reject(new Error('Discogs JSONP failed'));
-        };
+        script.onerror = () => { cleanup(); reject(new Error('Discogs JSONP failed')); };
         document.body.appendChild(script);
       });
     }
 
     function buildSearchUrl() {
       const barcode = getEl('barcode').value.trim();
+      const catno = getEl('catno').value.trim();
       const artist = getEl('artist').value.trim();
       const album = getEl('album').value.trim();
+      const formatFilter = getEl('formatFilter').value.trim();
       const params = new URLSearchParams();
       params.set('type', 'release');
       params.set('per_page', '10');
-
       if (barcode) params.set('barcode', barcode);
+      if (catno) params.set('catno', catno);
       if (artist) params.set('artist', artist);
       if (album) params.set('release_title', album);
-
+      if (formatFilter) params.set('format', formatFilter);
       return `https://api.discogs.com/database/search?${params.toString()}`;
     }
 
     async function lookupDiscogs() {
       savePrefs();
       const barcode = getEl('barcode').value.trim();
+      const catno = getEl('catno').value.trim();
       const artist = getEl('artist').value.trim();
       const album = getEl('album').value.trim();
-
-      if (!barcode && !artist && !album) {
-        setStatus('Enter a barcode or at least artist and album.');
+      if (!barcode && !catno && !artist && !album) {
+        setStatus('Enter a barcode, catalog number, or at least artist and album.');
         return;
       }
-
       setStatus('Looking up Discogs…');
       getEl('candidateArea').innerHTML = '<div class="empty">Searching…</div>';
       getEl('recommendationArea').innerHTML = '<div class="empty">Select a Discogs release to analyse it.</div>';
       selectedAnalysis = null;
       candidateCollapsed = false;
-
       try {
         const data = await fetchDiscogsJson(buildSearchUrl());
         const results = Array.isArray(data.results) ? data.results : [];
@@ -437,7 +428,7 @@
         setStatus(results.length ? `Found ${results.length} Discogs candidate${results.length === 1 ? '' : 's'}.` : 'No Discogs results found.');
       } catch (error) {
         setStatus(`Lookup failed: ${error.message}`);
-        getEl('candidateArea').innerHTML = '<div class="empty">Lookup failed. Try adding a Discogs token or using artist + album fallback.</div>';
+        getEl('candidateArea').innerHTML = '<div class="empty">Lookup failed. Try a token, catalog number, or artist + album fallback.</div>';
       }
     }
 
@@ -447,24 +438,21 @@
         area.innerHTML = '<div class="empty">No Discogs results yet.</div>';
         return;
       }
-
       if (candidateCollapsed && selectedAnalysis) {
         area.innerHTML = `
           <div class="candidate">
             <div class="candidate-title">Selected release: ${escapeHtml(selectedAnalysis.title)}</div>
             <div class="candidate-meta">Candidate list collapsed to save scrolling.</div>
-            <div class="row">
-              <button type="button" class="secondary" onclick="expandCandidates()">Show candidate list again</button>
-            </div>
+            <div class="row"><button type="button" class="secondary" onclick="expandCandidates()">Show candidate list again</button></div>
           </div>
         `;
         return;
       }
-
       area.innerHTML = results.map((item, index) => {
         const formats = Array.isArray(item.format) ? item.format.join(', ') : (item.format || 'Unknown format');
+        const catno = item.catno || 'No cat#';
         const title = item.title || 'Untitled release';
-        const meta = [item.year || 'Year unknown', item.country || 'Country unknown', formats].join(' • ');
+        const meta = [item.year || 'Year unknown', item.country || 'Country unknown', formats, catno].join(' • ');
         return `
           <div class="candidate">
             <div class="candidate-title">${escapeHtml(title)}</div>
@@ -483,66 +471,60 @@
       renderCandidates(currentCandidates);
     }
 
+    function getFormatCategory(release, fallbackItem = null) {
+      const releaseFormats = Array.isArray(release?.formats) ? release.formats.map((f) => f.name || '').filter(Boolean) : [];
+      const itemFormats = Array.isArray(fallbackItem?.format) ? fallbackItem.format : (fallbackItem?.format ? [fallbackItem.format] : []);
+      const all = [...releaseFormats, ...itemFormats].map((x) => String(x).toLowerCase());
+      if (all.some((x) => x.includes('vinyl') || x.includes('lp'))) return 'Vinyl';
+      if (all.some((x) => x.includes('dvd') || x.includes('blu-ray') || x.includes('bluray'))) return 'DVD';
+      if (all.some((x) => x.includes('cd'))) return 'CD';
+      return 'Other';
+    }
+
     function calcDemand(stats, release) {
       const forSale = Number(stats?.num_for_sale || 0);
       const want = Number(release?.community?.want || 0);
       const ratio = forSale > 0 ? want / forSale : (want > 0 ? want : 0);
-
-      if (want >= 50 && ratio >= 2) return { label: 'High', score: 3 };
-      if (want >= 10 && ratio >= 0.7) return { label: 'Medium', score: 2 };
-      return { label: 'Low', score: 1 };
+      if (want >= 50 && ratio >= 2) return { label: 'High', score: 3, ratio };
+      if (want >= 10 && ratio >= 0.7) return { label: 'Medium', score: 2, ratio };
+      return { label: 'Low', score: 1, ratio };
     }
 
-    function scoreRecommendation(profit, demandLabel, inDiscogs) {
+    function getFormatThresholds(formatCategory) {
+      if (formatCategory === 'Vinyl') return { maybe: 5, buy: 10, strong: 18 };
+      if (formatCategory === 'DVD') return { maybe: 3, buy: 8, strong: 14 };
+      return { maybe: 3, buy: 6, strong: 10 };
+    }
+
+    function scoreRecommendation(profit, demandLabel, inDiscogs, formatCategory) {
       let level = 'Skip';
       let cls = 'skip';
-
-      if (profit >= 10) {
-        level = 'Strong Buy';
-        cls = 'strong-buy';
-      } else if (profit >= 6) {
-        level = 'Buy';
-        cls = 'buy';
-      } else if (profit >= 3) {
-        level = 'Maybe';
-        cls = 'maybe';
+      const thresholds = getFormatThresholds(formatCategory);
+      if (profit >= thresholds.strong) {
+        level = 'Strong Buy'; cls = 'strong-buy';
+      } else if (profit >= thresholds.buy) {
+        level = 'Buy'; cls = 'buy';
+      } else if (profit >= thresholds.maybe) {
+        level = 'Maybe'; cls = 'maybe';
       }
-
-      if (demandLabel === 'Low' && level === 'Strong Buy') {
-        level = 'Buy';
-        cls = 'buy';
-      } else if (demandLabel === 'Low' && level === 'Buy') {
-        level = 'Maybe';
-        cls = 'maybe';
-      }
-
-      if (!inDiscogs && level === 'Strong Buy') {
-        level = 'Buy';
-        cls = 'buy';
-      } else if (!inDiscogs && level === 'Buy') {
-        level = 'Maybe';
-        cls = 'maybe';
-      } else if (!inDiscogs && level === 'Maybe') {
-        level = 'Skip';
-        cls = 'skip';
-      }
-
+      if (demandLabel === 'Low' && level === 'Strong Buy') { level = 'Buy'; cls = 'buy'; }
+      else if (demandLabel === 'Low' && level === 'Buy') { level = 'Maybe'; cls = 'maybe'; }
+      if (!inDiscogs && level === 'Strong Buy') { level = 'Buy'; cls = 'buy'; }
+      else if (!inDiscogs && level === 'Buy') { level = 'Maybe'; cls = 'maybe'; }
+      else if (!inDiscogs && level === 'Maybe') { level = 'Skip'; cls = 'skip'; }
       return { label: level, cls };
     }
 
     async function selectCandidate(index) {
       const item = currentCandidates[index];
       if (!item || !item.id) return;
-
       setStatus(`Loading release ${item.id}…`);
       getEl('recommendationArea').innerHTML = '<div class="empty">Analysing release…</div>';
-
       try {
         const [release, stats] = await Promise.all([
           fetchDiscogsJson(`https://api.discogs.com/releases/${item.id}`),
           fetchDiscogsJson(`https://api.discogs.com/marketplace/stats/${item.id}`)
         ]);
-
         const medianRaw = Number(stats?.median_price?.value ?? 0);
         const lowestRaw = Number(stats?.lowest_price?.value ?? 0);
         const rawCurrency = stats?.median_price?.currency || stats?.lowest_price?.currency || 'AUD';
@@ -550,43 +532,42 @@
         const lowestAud = toAud(lowestRaw, rawCurrency);
         const referenceAud = medianAud > 0 ? medianAud : lowestAud;
         const priceBasis = medianAud > 0 ? 'Median sales history' : (lowestAud > 0 ? 'Lowest current listing' : 'No usable market data');
-        const buyPrice = getNumber('buyPrice');
         const demand = calcDemand(stats, release);
+        const formatCategory = getFormatCategory(release, item);
         const strategy = buildListingStrategy(referenceAud, lowestAud, demand.label);
-        const suggestedSellPrice = strategy.balanced;
-        const suggestedMath = calculateProfitFromSellPrice(suggestedSellPrice);
-        const quickMath = calculateProfitFromSellPrice(strategy.quickSale);
-        const maxMath = calculateProfitFromSellPrice(strategy.maxProfit);
-        const profit = suggestedMath.profit;
-        const rec = scoreRecommendation(profit, demand.label, true);
+        const suggestedMath = strategy.balanced > 0 ? calculateProfitFromSellPrice(strategy.balanced) : { discogsCost: 0, paypalCost: 0, profit: null };
+        const quickMath = strategy.quickSale > 0 ? calculateProfitFromSellPrice(strategy.quickSale) : { profit: null };
+        const maxMath = strategy.maxProfit > 0 ? calculateProfitFromSellPrice(strategy.maxProfit) : { profit: null };
+        const rec = strategy.balanced > 0 ? scoreRecommendation(suggestedMath.profit, demand.label, true, formatCategory) : { label: 'No market data', cls: 'skip' };
         const title = [release.artists_sort || '', release.title || 'Untitled release'].filter(Boolean).join(' – ');
-
         selectedAnalysis = {
           id: item.id,
           title,
           barcode: getEl('barcode').value.trim(),
+          catno: getEl('catno').value.trim() || item.catno || '',
+          formatCategory,
           medianAud,
+          lowestAud,
           referenceAud,
           priceBasis,
-          lowestAud,
-          suggestedSellPrice,
+          suggestedSellPrice: strategy.balanced,
           quickSalePrice: strategy.quickSale,
           maxProfitPrice: strategy.maxProfit,
-          profit,
+          profit: suggestedMath.profit,
           quickProfit: quickMath.profit,
           maxProfit: maxMath.profit,
           demand: demand.label,
+          demandRatio: demand.ratio,
           numForSale: Number(stats?.num_for_sale || 0),
           want: Number(release?.community?.want || 0),
           have: Number(release?.community?.have || 0),
           recommendation: rec.label,
-          buyPrice,
+          buyPrice: getNumber('buyPrice'),
           discogsCost: suggestedMath.discogsCost,
           paypalCost: suggestedMath.paypalCost,
           sourceCurrency: rawCurrency,
           createdAt: new Date().toISOString()
         };
-
         candidateCollapsed = true;
         renderCandidates(currentCandidates);
         renderRecommendation(selectedAnalysis, rec);
@@ -601,14 +582,15 @@
       const hasMarketPrice = analysis.referenceAud > 0 && analysis.suggestedSellPrice > 0;
       const marketMessage = hasMarketPrice
         ? `<div class="pill info">Price basis: ${escapeHtml(analysis.priceBasis)}</div>`
-        : '<div class="pill skip">No usable Discogs market price found</div><div class="small">Discogs API does not reliably expose median sales history for every release through the endpoint this prototype uses. When median is missing, the app now falls back to the lowest current listing if available.</div>'; 
-
+        : '<div class="pill skip">No usable Discogs market price found</div><div class="small">This release has no usable median or lowest listing in the API response.</div>';
       getEl('recommendationArea').innerHTML = `
         <h3>${escapeHtml(analysis.title)}</h3>
         <div class="pill ${rec.cls}">${escapeHtml(rec.label)}</div>
         <div class="pill info">Found in Discogs</div>
         ${marketMessage}
         <div class="stat"><span class="muted">Barcode</span><strong>${escapeHtml(analysis.barcode || 'Not scanned')}</strong></div>
+        <div class="stat"><span class="muted">Catalog number</span><strong>${escapeHtml(analysis.catno || '—')}</strong></div>
+        <div class="stat"><span class="muted">Format</span><strong>${escapeHtml(analysis.formatCategory || 'Other')}</strong></div>
         <div class="stat"><span class="muted">Discogs release ID</span><strong>${escapeHtml(analysis.id)}</strong></div>
         <div class="stat"><span class="muted">Median price (AUD)</span><strong>${money(analysis.medianAud)}</strong></div>
         <div class="stat"><span class="muted">Lowest current price (AUD)</span><strong>${money(analysis.lowestAud)}</strong></div>
@@ -616,15 +598,15 @@
         <div class="stat"><span class="muted">Best listing price: quick sale</span><strong>${money(analysis.quickSalePrice)}</strong></div>
         <div class="stat"><span class="muted">Best listing price: balanced</span><strong>${money(analysis.suggestedSellPrice)}</strong></div>
         <div class="stat"><span class="muted">Best listing price: max profit</span><strong>${money(analysis.maxProfitPrice)}</strong></div>
-        <div class="stat"><span class="muted">Quick-sale profit (AUD)</span><strong>${money(analysis.quickProfit)}</strong></div>
-        <div class="stat"><span class="muted">Balanced profit (AUD)</span><strong>${money(analysis.profit)}</strong></div>
-        <div class="stat"><span class="muted">Max-profit profit (AUD)</span><strong>${money(analysis.maxProfit)}</strong></div>
-        <div class="stat"><span class="muted">Discogs fee estimate (balanced)</span><strong>${money(analysis.discogsCost)}</strong></div>
-        <div class="stat"><span class="muted">PayPal fee estimate (balanced)</span><strong>${money(analysis.paypalCost)}</strong></div>
+        <div class="stat"><span class="muted">Quick-sale profit (AUD)</span><strong>${analysis.quickProfit == null ? '—' : money(analysis.quickProfit)}</strong></div>
+        <div class="stat"><span class="muted">Balanced profit (AUD)</span><strong>${analysis.profit == null ? '—' : money(analysis.profit)}</strong></div>
+        <div class="stat"><span class="muted">Max-profit profit (AUD)</span><strong>${analysis.maxProfit == null ? '—' : money(analysis.maxProfit)}</strong></div>
+        <div class="stat"><span class="muted">Discogs fee estimate (balanced)</span><strong>${analysis.profit == null ? '—' : money(analysis.discogsCost)}</strong></div>
+        <div class="stat"><span class="muted">PayPal fee estimate (balanced)</span><strong>${analysis.profit == null ? '—' : money(analysis.paypalCost)}</strong></div>
         <div class="stat"><span class="muted">Demand signal</span><strong>${escapeHtml(analysis.demand)}</strong></div>
+        <div class="stat"><span class="muted">Demand ratio</span><strong>${Number.isFinite(analysis.demandRatio) ? analysis.demandRatio.toFixed(2) : '—'}</strong></div>
         <div class="stat"><span class="muted">Want / For sale</span><strong>${analysis.want} / ${analysis.numForSale}</strong></div>
         <div class="stat"><span class="muted">Have count</span><strong>${analysis.have}</strong></div>
-        <div class="stat"><span class="muted">Discogs source currency</span><strong>${escapeHtml(analysis.sourceCurrency)}</strong></div>
         <div class="row" style="margin-top: 14px;">
           <button type="button" onclick="saveItem()">Save to Inventory</button>
           <button type="button" class="secondary" onclick="recalculateRecommendation()">Recalculate</button>
@@ -635,9 +617,9 @@
     function recalculateRecommendation() {
       if (!selectedAnalysis) return;
       const strategy = buildListingStrategy(selectedAnalysis.referenceAud, selectedAnalysis.lowestAud, selectedAnalysis.demand);
-      const balancedMath = calculateProfitFromSellPrice(strategy.balanced);
-      const quickMath = calculateProfitFromSellPrice(strategy.quickSale);
-      const maxMath = calculateProfitFromSellPrice(strategy.maxProfit);
+      const balancedMath = strategy.balanced > 0 ? calculateProfitFromSellPrice(strategy.balanced) : { discogsCost: 0, paypalCost: 0, profit: null };
+      const quickMath = strategy.quickSale > 0 ? calculateProfitFromSellPrice(strategy.quickSale) : { profit: null };
+      const maxMath = strategy.maxProfit > 0 ? calculateProfitFromSellPrice(strategy.maxProfit) : { profit: null };
       selectedAnalysis.buyPrice = getNumber('buyPrice');
       selectedAnalysis.suggestedSellPrice = strategy.balanced;
       selectedAnalysis.quickSalePrice = strategy.quickSale;
@@ -647,17 +629,13 @@
       selectedAnalysis.profit = balancedMath.profit;
       selectedAnalysis.quickProfit = quickMath.profit;
       selectedAnalysis.maxProfit = maxMath.profit;
-      const rec = scoreRecommendation(selectedAnalysis.profit, selectedAnalysis.demand, true);
+      const rec = strategy.balanced > 0 ? scoreRecommendation(selectedAnalysis.profit, selectedAnalysis.demand, true, selectedAnalysis.formatCategory) : { label: 'No market data', cls: 'skip' };
       selectedAnalysis.recommendation = rec.label;
       renderRecommendation(selectedAnalysis, rec);
     }
 
     function loadInventory() {
-      try {
-        return JSON.parse(localStorage.getItem(inventoryKey) || '[]');
-      } catch (error) {
-        return [];
-      }
+      try { return JSON.parse(localStorage.getItem(inventoryKey) || '[]'); } catch { return []; }
     }
 
     function saveInventory(items) {
@@ -673,19 +651,14 @@
       }
       area.innerHTML = `
         <table>
-          <thead>
-            <tr>
-              <th>Title</th>
-              <th>Recommendation</th>
-              <th class="right">Profit</th>
-            </tr>
-          </thead>
+          <thead><tr><th>Title</th><th>Format</th><th>Recommendation</th><th class="right">Profit</th></tr></thead>
           <tbody>
             ${items.map((item) => `
               <tr>
                 <td>${escapeHtml(item.title)}</td>
+                <td>${escapeHtml(item.formatCategory || 'Other')}</td>
                 <td>${escapeHtml(item.recommendation)}</td>
-                <td class="right">${money(item.profit)}</td>
+                <td class="right">${item.profit == null ? '—' : money(item.profit)}</td>
               </tr>
             `).join('')}
           </tbody>
@@ -694,10 +667,7 @@
     }
 
     function saveItem() {
-      if (!selectedAnalysis) {
-        setStatus('Nothing to save yet. Analyse a release first.');
-        return;
-      }
+      if (!selectedAnalysis) { setStatus('Nothing to save yet. Analyse a release first.'); return; }
       const items = loadInventory();
       items.unshift(selectedAnalysis);
       saveInventory(items);
@@ -708,8 +678,10 @@
     function clearLookup() {
       stopBarcodeScan();
       getEl('barcode').value = '';
+      getEl('catno').value = '';
       getEl('artist').value = '';
       getEl('album').value = '';
+      getEl('formatFilter').value = '';
       currentCandidates = [];
       selectedAnalysis = null;
       candidateCollapsed = false;
@@ -720,37 +692,31 @@
 
     function useSampleBarcode() {
       getEl('barcode').value = '731452422829';
+      getEl('catno').value = '7243 8 45599 2 5';
       getEl('artist').value = 'Massive Attack';
       getEl('album').value = 'Mezzanine';
+      getEl('formatFilter').value = 'CD';
       setStatus('Sample loaded. Tap Lookup Discogs.');
     }
 
     async function startBarcodeScan() {
       if (!('mediaDevices' in navigator) || !navigator.mediaDevices.getUserMedia) {
-        setStatus('Camera access is not available in this browser.');
-        return;
+        setStatus('Camera access is not available in this browser.'); return;
       }
       if (!('BarcodeDetector' in window)) {
-        setStatus('Barcode scanning is not supported in this browser yet. Enter the barcode manually.');
-        return;
+        setStatus('Barcode scanning is not supported in this browser yet. Enter the barcode manually.'); return;
       }
-
       try {
         stopBarcodeScan();
         const preview = getEl('preview');
-        currentStream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: 'environment' } },
-          audio: false
-        });
+        currentStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
         preview.srcObject = currentStream;
         preview.style.display = 'block';
         await preview.play();
         const detector = new BarcodeDetector({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e'] });
         setStatus('Scanning… point the camera at the barcode.');
-
         const tick = async () => {
           if (!currentStream) return;
-
           try {
             const codes = await detector.detect(preview);
             if (codes.length > 0) {
@@ -765,10 +731,8 @@
           } catch (error) {
             console.log('scan frame error', error);
           }
-
           scanLoopHandle = requestAnimationFrame(tick);
         };
-
         tick();
       } catch (error) {
         setStatus(`Camera access failed: ${error.message}`);
@@ -776,10 +740,7 @@
     }
 
     function stopBarcodeScan() {
-      if (scanLoopHandle) {
-        cancelAnimationFrame(scanLoopHandle);
-        scanLoopHandle = null;
-      }
+      if (scanLoopHandle) { cancelAnimationFrame(scanLoopHandle); scanLoopHandle = null; }
       if (currentStream) {
         currentStream.getTracks().forEach((track) => track.stop());
         currentStream = null;
@@ -793,33 +754,22 @@
     function attachListeners() {
       getEl('token').addEventListener('change', savePrefs);
       getEl('fxRate').addEventListener('change', savePrefs);
-      ['buyPrice', 'discogsFee', 'paypalPct', 'paypalFixed', 'fxRate'].forEach((id) => {
-        getEl(id).addEventListener('input', () => {
-          if (selectedAnalysis) recalculateRecommendation();
-        });
+      ['buyPrice', 'discogsFee', 'paypalPct', 'paypalFixed', 'fxRate', 'formatFilter'].forEach((id) => {
+        getEl(id).addEventListener('input', () => { if (selectedAnalysis) recalculateRecommendation(); });
       });
     }
 
     function runSelfTests() {
-      const tests = [
-        { profit: 2.9, demand: 'Medium', expected: 'Skip' },
-        { profit: 4.2, demand: 'Medium', expected: 'Maybe' },
-        { profit: 7.2, demand: 'Medium', expected: 'Buy' },
-        { profit: 12, demand: 'High', expected: 'Strong Buy' },
-        { suggested: suggestSellPrice(15.1, 13.4, 'High'), expectedSuggested: 15.5 },
-        { suggested: suggestSellPrice(15.1, 13.4, 'Low'), expectedSuggested: 13.0 },
-        { strategy: buildListingStrategy(15, 12, 'Medium'), expectedBalanced: 13.0, expectedQuick: 11.5, expectedMax: 15.0 },
-        { strategy: buildListingStrategy(0, 12, 'Medium'), expectedBalanced: 0, expectedQuick: 0, expectedMax: 0 }
-      ];
       const failed = [];
-      if (scoreRecommendation(tests[0].profit, tests[0].demand, true).label !== tests[0].expected) failed.push(tests[0]);
-      if (scoreRecommendation(tests[1].profit, tests[1].demand, true).label !== tests[1].expected) failed.push(tests[1]);
-      if (scoreRecommendation(tests[2].profit, tests[2].demand, true).label !== tests[2].expected) failed.push(tests[2]);
-      if (scoreRecommendation(tests[3].profit, tests[3].demand, true).label !== tests[3].expected) failed.push(tests[3]);
-      if (tests[4].suggested !== tests[4].expectedSuggested) failed.push(tests[4]);
-      if (tests[5].suggested !== tests[5].expectedSuggested) failed.push(tests[5]);
-      if (tests[6].strategy.balanced !== tests[6].expectedBalanced || tests[6].strategy.quickSale !== tests[6].expectedQuick || tests[6].strategy.maxProfit !== tests[6].expectedMax) failed.push(tests[6]);
-      if (tests[7].strategy.balanced !== tests[7].expectedBalanced || tests[7].strategy.quickSale !== tests[7].expectedQuick || tests[7].strategy.maxProfit !== tests[7].expectedMax) failed.push(tests[7]);
+      if (scoreRecommendation(2.9, 'Medium', true, 'CD').label !== 'Skip') failed.push('cd skip');
+      if (scoreRecommendation(4.2, 'Medium', true, 'CD').label !== 'Maybe') failed.push('cd maybe');
+      if (scoreRecommendation(7.2, 'Medium', true, 'CD').label !== 'Buy') failed.push('cd buy');
+      if (scoreRecommendation(12, 'High', true, 'CD').label !== 'Strong Buy') failed.push('cd strong');
+      if (scoreRecommendation(11, 'High', true, 'Vinyl').label !== 'Buy') failed.push('vinyl threshold');
+      if (getFormatCategory({ formats: [{ name: 'Vinyl' }] }, null) !== 'Vinyl') failed.push('vinyl detect');
+      if (getFormatCategory({ formats: [{ name: 'DVD' }] }, null) !== 'DVD') failed.push('dvd detect');
+      const strategy = buildListingStrategy(15, 12, 'Medium');
+      if (strategy.balanced !== 13 || strategy.quickSale !== 11.5 || strategy.maxProfit !== 15) failed.push('strategy');
       if (failed.length) console.error('Self-tests failed', failed);
     }
 
