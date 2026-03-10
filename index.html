@@ -275,6 +275,10 @@
           </div>
         </div>
         <div class="small">All displayed prices are converted to AUD. Catalog number search is included for older records. eBay AU balancing currently uses a manual sold-price input.</div>
+        <div class="row" style="margin-top:12px;">
+          <button id="installBtn" type="button" class="secondary" style="display:none;" onclick="triggerInstall()">Install app</button>
+          <span id="installStatus" class="small">If install is available, the button will appear here.</span>
+        </div>
       </div>
     </div>
 
@@ -367,6 +371,25 @@
       panel.style.display = nextOpen ? 'block' : 'none';
       button.innerText = nextOpen ? '▲ Lookup' : '▼ Lookup';
       button.setAttribute('aria-expanded', String(nextOpen));
+    }
+
+    let deferredInstallPrompt = null;
+
+    function triggerInstall() {
+      if (!deferredInstallPrompt) {
+        const status = getEl('installStatus');
+        if (status) status.textContent = 'Install is not available yet on this device/browser session.';
+        return;
+      }
+
+      deferredInstallPrompt.prompt();
+      deferredInstallPrompt.userChoice.then(() => {
+        deferredInstallPrompt = null;
+        const btn = getEl('installBtn');
+        const status = getEl('installStatus');
+        if (btn) btn.style.display = 'none';
+        if (status) status.textContent = 'Install prompt shown.';
+      });
     }
 
     function openDiscogsUrl(url) {
@@ -1048,40 +1071,26 @@
       }
     });
 
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredInstallPrompt = e;
+      const btn = getEl('installBtn');
+      const status = getEl('installStatus');
+      if (btn) btn.style.display = 'inline-block';
+      if (status) status.textContent = 'Install is available. Tap the button to install the app.';
+    });
+
+    window.addEventListener('appinstalled', () => {
+      deferredInstallPrompt = null;
+      const btn = getEl('installBtn');
+      const status = getEl('installStatus');
+      if (btn) btn.style.display = 'none';
+      if (status) status.textContent = 'App installed.';
+    });
+
     loadPrefs();
     toggleLookupPanel(true);
     renderInventory();
   </script>
-  <button id="installBtn" type="button" class="secondary" style="display:none; margin-top:12px;">
-  Install app
-</button>
-
-<script>
-let deferredInstallPrompt = null;
-
-window.addEventListener('beforeinstallprompt', (e) => {
-  e.preventDefault();
-  deferredInstallPrompt = e;
-
-  const btn = document.getElementById('installBtn');
-  if (btn) btn.style.display = 'inline-block';
-});
-
-document.getElementById('installBtn')?.addEventListener('click', async () => {
-  if (!deferredInstallPrompt) return;
-
-  deferredInstallPrompt.prompt();
-  await deferredInstallPrompt.userChoice;
-  deferredInstallPrompt = null;
-
-  document.getElementById('installBtn').style.display = 'none';
-});
-
-window.addEventListener('appinstalled', () => {
-  deferredInstallPrompt = null;
-  const btn = document.getElementById('installBtn');
-  if (btn) btn.style.display = 'none';
-});
-</script>
 </body>
 </html>
