@@ -5,6 +5,7 @@
   "display": "standalone",
   "background_color": "#0f1115",
   "theme_color": "#0f1115",
+  "description": "Discogs powered CD and record flipping scout",
   "icons": [
     {
       "src": "icon-192.png",
