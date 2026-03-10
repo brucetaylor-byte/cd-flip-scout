@@ -330,6 +330,24 @@
       return roundSellPrice(medianAud);
     }
 
+    function buildListingStrategy(medianAud, lowestAud, demandLabel) {
+      const quickSale = suggestSellPrice(medianAud, lowestAud, 'Low');
+      const balanced = suggestSellPrice(medianAud, lowestAud, demandLabel);
+      const maxProfit = roundSellPrice(Math.max(medianAud, balanced));
+      return { quickSale, balanced, maxProfit };
+    }
+
+    function calculateProfitFromSellPrice(sellPrice) {
+      const buyPrice = getNumber('buyPrice');
+      const discogsFee = getNumber('discogsFee') / 100;
+      const paypalPct = getNumber('paypalPct') / 100;
+      const paypalFixed = getNumber('paypalFixed');
+      const discogsCost = sellPrice * discogsFee;
+      const paypalCost = (sellPrice * paypalPct) + paypalFixed;
+      const profit = sellPrice - discogsCost - paypalCost - buyPrice;
+      return { discogsCost, paypalCost, profit };
+    }
+
     async function fetchDiscogsJson(url) {
       try {
         const response = await fetch(url, {
@@ -531,14 +549,13 @@
         const medianAud = toAud(medianRaw, rawCurrency);
         const lowestAud = toAud(lowestRaw, rawCurrency);
         const buyPrice = getNumber('buyPrice');
-        const discogsFee = getNumber('discogsFee') / 100;
-        const paypalPct = getNumber('paypalPct') / 100;
-        const paypalFixed = getNumber('paypalFixed');
         const demand = calcDemand(stats, release);
-        const suggestedSellPrice = suggestSellPrice(medianAud, lowestAud, demand.label);
-        const discogsCost = suggestedSellPrice * discogsFee;
-        const paypalCost = (suggestedSellPrice * paypalPct) + paypalFixed;
-        const profit = suggestedSellPrice - discogsCost - paypalCost - buyPrice;
+        const strategy = buildListingStrategy(medianAud, lowestAud, demand.label);
+        const suggestedSellPrice = strategy.balanced;
+        const suggestedMath = calculateProfitFromSellPrice(suggestedSellPrice);
+        const quickMath = calculateProfitFromSellPrice(strategy.quickSale);
+        const maxMath = calculateProfitFromSellPrice(strategy.maxProfit);
+        const profit = suggestedMath.profit;
         const rec = scoreRecommendation(profit, demand.label, true);
         const title = [release.artists_sort || '', release.title || 'Untitled release'].filter(Boolean).join(' – ');
 
@@ -549,15 +566,19 @@
           medianAud,
           lowestAud,
           suggestedSellPrice,
+          quickSalePrice: strategy.quickSale,
+          maxProfitPrice: strategy.maxProfit,
           profit,
+          quickProfit: quickMath.profit,
+          maxProfit: maxMath.profit,
           demand: demand.label,
           numForSale: Number(stats?.num_for_sale || 0),
           want: Number(release?.community?.want || 0),
           have: Number(release?.community?.have || 0),
           recommendation: rec.label,
           buyPrice,
-          discogsCost,
-          paypalCost,
+          discogsCost: suggestedMath.discogsCost,
+          paypalCost: suggestedMath.paypalCost,
           sourceCurrency: rawCurrency,
           createdAt: new Date().toISOString()
         };
@@ -573,19 +594,28 @@
     }
 
     function renderRecommendation(analysis, rec) {
+      const hasMarketPrice = analysis.suggestedSellPrice > 0;
+      const marketMessage = hasMarketPrice
+        ? ''
+        : '<div class="pill skip">No usable Discogs market price found</div><div class="small">Discogs returned no median price for this release, so the profit estimate is not meaningful yet.</div>';
+
       getEl('recommendationArea').innerHTML = `
         <h3>${escapeHtml(analysis.title)}</h3>
         <div class="pill ${rec.cls}">${escapeHtml(rec.label)}</div>
         <div class="pill info">Found in Discogs</div>
+        ${marketMessage}
         <div class="stat"><span class="muted">Barcode</span><strong>${escapeHtml(analysis.barcode || 'Not scanned')}</strong></div>
         <div class="stat"><span class="muted">Discogs release ID</span><strong>${escapeHtml(analysis.id)}</strong></div>
         <div class="stat"><span class="muted">Median price (AUD)</span><strong>${money(analysis.medianAud)}</strong></div>
         <div class="stat"><span class="muted">Lowest current price (AUD)</span><strong>${money(analysis.lowestAud)}</strong></div>
-        <div class="stat"><span class="muted">Suggested sell price (AUD)</span><strong>${money(analysis.suggestedSellPrice)}</strong></div>
-        <div class="stat"><span class="muted">Buy price (AUD)</span><strong>${money(analysis.buyPrice)}</strong></div>
-        <div class="stat"><span class="muted">Discogs fee estimate (AUD)</span><strong>${money(analysis.discogsCost)}</strong></div>
-        <div class="stat"><span class="muted">PayPal fee estimate (AUD)</span><strong>${money(analysis.paypalCost)}</strong></div>
-        <div class="stat"><span class="muted">Estimated net profit (AUD)</span><strong>${money(analysis.profit)}</strong></div>
+        <div class="stat"><span class="muted">Best listing price: quick sale</span><strong>${money(analysis.quickSalePrice)}</strong></div>
+        <div class="stat"><span class="muted">Best listing price: balanced</span><strong>${money(analysis.suggestedSellPrice)}</strong></div>
+        <div class="stat"><span class="muted">Best listing price: max profit</span><strong>${money(analysis.maxProfitPrice)}</strong></div>
+        <div class="stat"><span class="muted">Quick-sale profit (AUD)</span><strong>${money(analysis.quickProfit)}</strong></div>
+        <div class="stat"><span class="muted">Balanced profit (AUD)</span><strong>${money(analysis.profit)}</strong></div>
+        <div class="stat"><span class="muted">Max-profit profit (AUD)</span><strong>${money(analysis.maxProfit)}</strong></div>
+        <div class="stat"><span class="muted">Discogs fee estimate (balanced)</span><strong>${money(analysis.discogsCost)}</strong></div>
+        <div class="stat"><span class="muted">PayPal fee estimate (balanced)</span><strong>${money(analysis.paypalCost)}</strong></div>
         <div class="stat"><span class="muted">Demand signal</span><strong>${escapeHtml(analysis.demand)}</strong></div>
         <div class="stat"><span class="muted">Want / For sale</span><strong>${analysis.want} / ${analysis.numForSale}</strong></div>
         <div class="stat"><span class="muted">Have count</span><strong>${analysis.have}</strong></div>
@@ -599,16 +629,19 @@
 
     function recalculateRecommendation() {
       if (!selectedAnalysis) return;
-      const buyPrice = getNumber('buyPrice');
-      const discogsFee = getNumber('discogsFee') / 100;
-      const paypalPct = getNumber('paypalPct') / 100;
-      const paypalFixed = getNumber('paypalFixed');
-      const suggestedSellPrice = suggestSellPrice(selectedAnalysis.medianAud, selectedAnalysis.lowestAud, selectedAnalysis.demand);
-      selectedAnalysis.buyPrice = buyPrice;
-      selectedAnalysis.suggestedSellPrice = suggestedSellPrice;
-      selectedAnalysis.discogsCost = suggestedSellPrice * discogsFee;
-      selectedAnalysis.paypalCost = (suggestedSellPrice * paypalPct) + paypalFixed;
-      selectedAnalysis.profit = suggestedSellPrice - selectedAnalysis.discogsCost - selectedAnalysis.paypalCost - buyPrice;
+      const strategy = buildListingStrategy(selectedAnalysis.medianAud, selectedAnalysis.lowestAud, selectedAnalysis.demand);
+      const balancedMath = calculateProfitFromSellPrice(strategy.balanced);
+      const quickMath = calculateProfitFromSellPrice(strategy.quickSale);
+      const maxMath = calculateProfitFromSellPrice(strategy.maxProfit);
+      selectedAnalysis.buyPrice = getNumber('buyPrice');
+      selectedAnalysis.suggestedSellPrice = strategy.balanced;
+      selectedAnalysis.quickSalePrice = strategy.quickSale;
+      selectedAnalysis.maxProfitPrice = strategy.maxProfit;
+      selectedAnalysis.discogsCost = balancedMath.discogsCost;
+      selectedAnalysis.paypalCost = balancedMath.paypalCost;
+      selectedAnalysis.profit = balancedMath.profit;
+      selectedAnalysis.quickProfit = quickMath.profit;
+      selectedAnalysis.maxProfit = maxMath.profit;
       const rec = scoreRecommendation(selectedAnalysis.profit, selectedAnalysis.demand, true);
       selectedAnalysis.recommendation = rec.label;
       renderRecommendation(selectedAnalysis, rec);
@@ -769,7 +802,8 @@
         { profit: 7.2, demand: 'Medium', expected: 'Buy' },
         { profit: 12, demand: 'High', expected: 'Strong Buy' },
         { suggested: suggestSellPrice(15.1, 13.4, 'High'), expectedSuggested: 15.5 },
-        { suggested: suggestSellPrice(15.1, 13.4, 'Low'), expectedSuggested: 13.0 }
+        { suggested: suggestSellPrice(15.1, 13.4, 'Low'), expectedSuggested: 13.0 },
+        { strategy: buildListingStrategy(15, 12, 'Medium'), expectedBalanced: 13.0, expectedQuick: 11.5, expectedMax: 15.0 }
       ];
       const failed = [];
       if (scoreRecommendation(tests[0].profit, tests[0].demand, true).label !== tests[0].expected) failed.push(tests[0]);
@@ -778,6 +812,7 @@
       if (scoreRecommendation(tests[3].profit, tests[3].demand, true).label !== tests[3].expected) failed.push(tests[3]);
       if (tests[4].suggested !== tests[4].expectedSuggested) failed.push(tests[4]);
       if (tests[5].suggested !== tests[5].expectedSuggested) failed.push(tests[5]);
+      if (tests[6].strategy.balanced !== tests[6].expectedBalanced || tests[6].strategy.quickSale !== tests[6].expectedQuick || tests[6].strategy.maxProfit !== tests[6].expectedMax) failed.push(tests[6]);
       if (failed.length) console.error('Self-tests failed', failed);
     }
 
