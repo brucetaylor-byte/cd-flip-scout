@@ -20,7 +20,7 @@
         <div>
           <div class="title-wrap">
             <span class="logo">💿</span>
-            <h1 style="margin-bottom: 4px;">CD Flipper V.5</h1>
+            <h1 style="margin-bottom: 4px;">CD Flipper</h1>
           </div>
           <p class="sub">Flip scout for CDs DVDs and Records</p>
         </div>
@@ -185,41 +185,8 @@
           <h2 style="margin-bottom:4px;">Op Shop Tracker</h2>
           <div id="opShopSummaryText" class="small">No op shops saved yet.</div>
         </div>
+        <button type="button" class="secondary" onclick="showOpShopPage()">Open Op Shop Tracker</button>
       </div>
-
-      <div class="grid" style="margin-top:12px;">
-        <div>
-          <label for="shopName">Shop name</label>
-          <input id="shopName" type="text" placeholder="Savers, Vinnies, Salvos..." />
-        </div>
-
-        <div>
-          <label for="shopSuburb">Suburb</label>
-          <input id="shopSuburb" type="text" placeholder="Woodend, Kyneton..." />
-        </div>
-
-        <div>
-          <label for="shopLastVisited">Last visited</label>
-          <input id="shopLastVisited" type="date" />
-        </div>
-
-        <div>
-          <label for="shopRevisitInterval">Revisit interval (days)</label>
-          <input id="shopRevisitInterval" type="number" min="1" step="1" value="14" />
-        </div>
-
-        <div style="grid-column: 1 / -1;">
-          <label for="shopNotes">Notes</label>
-          <textarea id="shopNotes" placeholder="Best stock day, pricing, staff, parking, hidden shelves, etc"></textarea>
-        </div>
-      </div>
-
-      <div class="row" style="margin-top:12px;">
-        <button id="saveOpShopBtn" type="button" onclick="addOrUpdateOpShop()">Add shop</button>
-        <button type="button" class="secondary" onclick="clearOpShopForm()">Clear</button>
-      </div>
-
-      <div id="opShopArea" style="margin-top:16px;"></div>
     </div>
   </div>
 
@@ -289,6 +256,56 @@
     <div id="inventoryManagerArea"></div>
   </div>
 
-  <script src="app.js?v=9" defer></script>
+  <div id="opShopPage" class="inventory-manager hidden">
+    <div class="card">
+      <div class="row" style="justify-content: space-between; align-items: center;">
+        <div>
+          <h2 style="margin-bottom:4px;">Op Shop Tracker</h2>
+          <div class="small">Track shops, revisit timing, and notes.</div>
+        </div>
+        <div class="row">
+          <button type="button" class="secondary" onclick="hideOpShopPage()">← Back</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="grid" style="margin-top:12px;">
+        <div>
+          <label for="shopName">Shop name</label>
+          <input id="shopName" type="text" placeholder="Savers, Vinnies, Salvos..." />
+        </div>
+
+        <div>
+          <label for="shopSuburb">Suburb</label>
+          <input id="shopSuburb" type="text" placeholder="Woodend, Kyneton..." />
+        </div>
+
+        <div>
+          <label for="shopLastVisited">Last visited</label>
+          <input id="shopLastVisited" type="date" />
+        </div>
+
+        <div>
+          <label for="shopRevisitInterval">Revisit interval (days)</label>
+          <input id="shopRevisitInterval" type="number" min="1" step="1" value="14" />
+        </div>
+
+        <div style="grid-column: 1 / -1;">
+          <label for="shopNotes">Notes</label>
+          <textarea id="shopNotes" placeholder="Best stock day, pricing, staff, parking, hidden shelves, etc"></textarea>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:12px;">
+        <button id="saveOpShopBtn" type="button" onclick="addOrUpdateOpShop()">Add shop</button>
+        <button type="button" class="secondary" onclick="clearOpShopForm()">Clear</button>
+      </div>
+    </div>
+
+    <div id="opShopArea"></div>
+  </div>
+
+  <script src="app.js?v=10" defer></script>
 </body>
 </html>
