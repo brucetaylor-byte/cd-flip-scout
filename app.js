@@ -412,6 +412,7 @@ async function selectCandidate(index) {
     const maxMath = strategy.maxProfit > 0 ? calculateProfitFromSellPrice(strategy.maxProfit) : { profit: null };
     const rec = strategy.balanced > 0 ? scoreRecommendation(suggestedMath.profit, demand.label, true, formatCategory) : { label: 'No market data', cls: 'skip' };
     const title = [release.artists_sort || '', release.title || 'Untitled release'].filter(Boolean).join(' – ');
+
     selectedAnalysis = {
       discogsUrl: `https://www.discogs.com/release/${item.id}`,
       id: item.id,
@@ -451,6 +452,7 @@ async function selectCandidate(index) {
       sleeveCondition: '',
       comment: ''
     };
+
     candidateCollapsed = true;
     renderCandidates(currentCandidates);
     renderRecommendation(selectedAnalysis, rec);
@@ -567,9 +569,14 @@ function recalculateRecommendation() {
   renderRecommendation(selectedAnalysis, rec);
 }
 
+/* =========================
+   INVENTORY
+========================= */
+
 function sanitiseInventoryItem(item = {}) {
   const quantity = Math.max(1, Math.floor(normaliseNumber(item.quantity, 1)));
   const status = INVENTORY_STATUSES.includes(item.status) ? item.status : 'To clean';
+
   return {
     ...item,
     status,
@@ -615,7 +622,7 @@ function getInventoryFilterState() {
 function applyInventoryFilters(items) {
   const { search, status, format, sort } = getInventoryFilterState();
 
-  let filtered = items.filter((item) => {
+  const filtered = items.filter((item) => {
     const matchesSearch = !search || [
       item.title,
       item.catno,
@@ -648,6 +655,7 @@ function applyInventoryFilters(items) {
 
 function showInventoryPage() {
   getEl('inventoryPage')?.classList.remove('hidden');
+  getEl('opShopPage')?.classList.add('hidden');
   document.querySelector('.wrap')?.classList.add('hidden');
   renderInventoryManager();
   window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -682,7 +690,9 @@ function renderInventory() {
   const items = loadInventory();
   const area = getEl('inventoryArea');
   if (!area) return;
+
   updateInventorySummary(items);
+
   if (!items.length) {
     area.innerHTML = 'No saved items yet.';
     return;
@@ -723,7 +733,11 @@ function renderInventoryManager() {
   }
 
   area.innerHTML = filtered.map((item) => {
-    const originalIndex = items.findIndex((source) => source.createdAt === item.createdAt && source.id === item.id && source.title === item.title);
+    const originalIndex = items.findIndex((source) =>
+      source.createdAt === item.createdAt &&
+      source.id === item.id &&
+      source.title === item.title
+    );
     const qty = Math.max(1, normaliseNumber(item.quantity, 1));
 
     return `
@@ -922,113 +936,22 @@ function saveItem() {
   setStatus('Saved to local inventory.');
 }
 
-function clearLookup() {
-  stopBarcodeScan();
-  const fields = ['barcode', 'catno', 'artist', 'album'];
-  fields.forEach((id) => {
-    const el = getEl(id);
-    if (el) el.value = '';
-  });
-  if (getEl('formatFilter')) getEl('formatFilter').value = '';
-  if (getEl('ebayMedian')) getEl('ebayMedian').value = '0';
-  if (getEl('priceBlendMode')) getEl('priceBlendMode').value = 'discogs';
-  currentCandidates = [];
-  selectedAnalysis = null;
-  candidateCollapsed = false;
-  getEl('candidateArea').innerHTML = '<div class="empty">No Discogs results yet.</div>';
-  getEl('recommendationArea').innerHTML = '<div class="empty">Select a Discogs release to analyse it.</div>';
-  setStatus('Ready.');
-}
-
-function useSampleBarcode() {
-  if (getEl('barcode')) getEl('barcode').value = '731452422829';
-  if (getEl('catno')) getEl('catno').value = '7243 8 45599 2 5';
-  if (getEl('artist')) getEl('artist').value = 'Massive Attack';
-  if (getEl('album')) getEl('album').value = 'Mezzanine';
-  if (getEl('formatFilter')) getEl('formatFilter').value = 'CD';
-  if (getEl('ebayMedian')) getEl('ebayMedian').value = '9.50';
-  if (getEl('priceBlendMode')) getEl('priceBlendMode').value = 'max';
-  setStatus('Sample loaded. Tap Lookup Discogs.');
-}
-
-async function startBarcodeScan() {
-  if (!('mediaDevices' in navigator) || !navigator.mediaDevices.getUserMedia) {
-    setStatus('Camera access is not available in this browser.');
-    return;
-  }
-  if (!('BarcodeDetector' in window)) {
-    setStatus('Barcode scanning is not supported in this browser yet. Enter the barcode manually.');
-    return;
-  }
-
-  toggleLookupPanel(false);
-
-  try {
-    stopBarcodeScan();
-    const preview = getEl('preview');
-    currentStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: 'environment' } },
-      audio: false
-    });
-    preview.srcObject = currentStream;
-    preview.style.display = 'block';
-    await preview.play();
-    preview.scrollIntoView({ behavior: 'smooth', block: 'start' });
-
-    const detector = new BarcodeDetector({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e'] });
-    setStatus('Scanning… point camera at barcode.');
-
-    const scanFrame = async () => {
-      if (!currentStream) return;
-      try {
-        const codes = await detector.detect(preview);
-        if (codes.length > 0) {
-          const value = codes[0].rawValue || '';
-          if (value) {
-            if (getEl('barcode')) getEl('barcode').value = value;
-            setStatus(`Scanned ${value}. Looking up Discogs…`);
-            stopBarcodeScan();
-            lookupDiscogs();
-            return;
-          }
-        }
-      } catch (e) {
-        console.log('scan error', e);
-      }
-      scanLoopHandle = requestAnimationFrame(scanFrame);
-    };
-
-    scanLoopHandle = requestAnimationFrame(scanFrame);
-  } catch (err) {
-    setStatus(`Camera access failed: ${err.message}`);
-    stopBarcodeScan();
-  }
-}
-
-function stopBarcodeScan() {
-  if (scanLoopHandle) {
-    cancelAnimationFrame(scanLoopHandle);
-    scanLoopHandle = null;
-  }
-  if (currentStream) {
-    currentStream.getTracks().forEach((t) => t.stop());
-    currentStream = null;
-  }
-  const preview = getEl('preview');
-  if (preview) {
-    try {
-      preview.pause();
-    } catch {
-      // ignore
-    }
-    preview.srcObject = null;
-    preview.style.display = 'none';
-  }
-}
-
 /* =========================
    OP SHOP TRACKER
 ========================= */
+
+function sanitiseOpShop(item = {}) {
+  return {
+    id: item.id || `shop_${Date.now()}_${Math.floor(Math.random() * 10000)}`,
+    shopName: item.shopName || '',
+    suburb: item.suburb || '',
+    lastVisited: item.lastVisited || '',
+    revisitInterval: Math.max(1, Math.floor(normaliseNumber(item.revisitInterval, 14))),
+    notes: item.notes || '',
+    createdAt: item.createdAt || new Date().toISOString(),
+    updatedAt: item.updatedAt || item.createdAt || new Date().toISOString()
+  };
+}
 
 function loadOpShops() {
   try {
@@ -1042,19 +965,6 @@ function loadOpShops() {
 function saveOpShops(items) {
   const clean = (Array.isArray(items) ? items : []).map(sanitiseOpShop).slice(0, 500);
   localStorage.setItem(opShopKey, JSON.stringify(clean));
-}
-
-function sanitiseOpShop(item = {}) {
-  return {
-    id: item.id || `shop_${Date.now()}_${Math.floor(Math.random() * 10000)}`,
-    shopName: item.shopName || '',
-    suburb: item.suburb || '',
-    lastVisited: item.lastVisited || '',
-    revisitInterval: Math.max(1, Math.floor(normaliseNumber(item.revisitInterval, 14))),
-    notes: item.notes || '',
-    createdAt: item.createdAt || new Date().toISOString(),
-    updatedAt: item.updatedAt || item.createdAt || new Date().toISOString()
-  };
 }
 
 function getTodayYmd() {
@@ -1141,6 +1051,21 @@ function updateOpShopSummary(shops) {
   const soonCount = shops.filter((shop) => getOpShopDueState(shop).label === 'Due soon').length;
 
   el.textContent = `${shops.length} shop${shops.length === 1 ? '' : 's'} • Due: ${dueCount} • Due soon: ${soonCount}`;
+}
+
+function showOpShopPage() {
+  getEl('opShopPage')?.classList.remove('hidden');
+  getEl('inventoryPage')?.classList.add('hidden');
+  document.querySelector('.wrap')?.classList.add('hidden');
+  renderOpShopTracker();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function hideOpShopPage() {
+  getEl('opShopPage')?.classList.add('hidden');
+  document.querySelector('.wrap')?.classList.remove('hidden');
+  updateOpShopSummary(loadOpShops());
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 function renderOpShopTracker() {
@@ -1307,15 +1232,137 @@ function removeOpShop(id) {
 }
 
 /* =========================
-   GLOBAL EVENTS
+   LOOKUP HELPERS
+========================= */
+
+function clearLookup() {
+  stopBarcodeScan();
+  const fields = ['barcode', 'catno', 'artist', 'album'];
+  fields.forEach((id) => {
+    const el = getEl(id);
+    if (el) el.value = '';
+  });
+  if (getEl('formatFilter')) getEl('formatFilter').value = '';
+  if (getEl('ebayMedian')) getEl('ebayMedian').value = '0';
+  if (getEl('priceBlendMode')) getEl('priceBlendMode').value = 'discogs';
+  currentCandidates = [];
+  selectedAnalysis = null;
+  candidateCollapsed = false;
+  getEl('candidateArea').innerHTML = '<div class="empty">No Discogs results yet.</div>';
+  getEl('recommendationArea').innerHTML = '<div class="empty">Select a Discogs release to analyse it.</div>';
+  setStatus('Ready.');
+}
+
+function useSampleBarcode() {
+  if (getEl('barcode')) getEl('barcode').value = '731452422829';
+  if (getEl('catno')) getEl('catno').value = '7243 8 45599 2 5';
+  if (getEl('artist')) getEl('artist').value = 'Massive Attack';
+  if (getEl('album')) getEl('album').value = 'Mezzanine';
+  if (getEl('formatFilter')) getEl('formatFilter').value = 'CD';
+  if (getEl('ebayMedian')) getEl('ebayMedian').value = '9.50';
+  if (getEl('priceBlendMode')) getEl('priceBlendMode').value = 'max';
+  setStatus('Sample loaded. Tap Lookup Discogs.');
+}
+
+async function startBarcodeScan() {
+  if (!('mediaDevices' in navigator) || !navigator.mediaDevices.getUserMedia) {
+    setStatus('Camera access is not available in this browser.');
+    return;
+  }
+  if (!('BarcodeDetector' in window)) {
+    setStatus('Barcode scanning is not supported in this browser yet. Enter the barcode manually.');
+    return;
+  }
+
+  toggleLookupPanel(false);
+
+  try {
+    stopBarcodeScan();
+    const preview = getEl('preview');
+    currentStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' } },
+      audio: false
+    });
+    preview.srcObject = currentStream;
+    preview.style.display = 'block';
+    await preview.play();
+    preview.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    const detector = new BarcodeDetector({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e'] });
+    setStatus('Scanning… point camera at barcode.');
+
+    const scanFrame = async () => {
+      if (!currentStream) return;
+      try {
+        const codes = await detector.detect(preview);
+        if (codes.length > 0) {
+          const value = codes[0].rawValue || '';
+          if (value) {
+            if (getEl('barcode')) getEl('barcode').value = value;
+            setStatus(`Scanned ${value}. Looking up Discogs…`);
+            stopBarcodeScan();
+            lookupDiscogs();
+            return;
+          }
+        }
+      } catch (e) {
+        console.log('scan error', e);
+      }
+      scanLoopHandle = requestAnimationFrame(scanFrame);
+    };
+
+    scanLoopHandle = requestAnimationFrame(scanFrame);
+  } catch (err) {
+    setStatus(`Camera access failed: ${err.message}`);
+    stopBarcodeScan();
+  }
+}
+
+function stopBarcodeScan() {
+  if (scanLoopHandle) {
+    cancelAnimationFrame(scanLoopHandle);
+    scanLoopHandle = null;
+  }
+  if (currentStream) {
+    currentStream.getTracks().forEach((t) => t.stop());
+    currentStream = null;
+  }
+  const preview = getEl('preview');
+  if (preview) {
+    try {
+      preview.pause();
+    } catch {
+      // ignore
+    }
+    preview.srcObject = null;
+    preview.style.display = 'none';
+  }
+}
+
+/* =========================
+   EVENTS
 ========================= */
 
 document.addEventListener('input', (e) => {
-  if (['buyPrice', 'discogsFee', 'paypalPct', 'paypalFixed', 'ebayMedian', 'priceBlendMode'].includes(e.target.id)) {
+  const id = e.target?.id;
+
+  if (['buyPrice', 'discogsFee', 'paypalPct', 'paypalFixed', 'ebayMedian'].includes(id)) {
     recalculateRecommendation();
   }
 
-  if (['inventorySearch', 'inventoryStatusFilter', 'inventoryFormatFilter', 'inventorySort'].includes(e.target.id)) {
+  if (id === 'inventorySearch') {
+    renderInventoryManager();
+  }
+});
+
+document.addEventListener('change', (e) => {
+  const id = e.target?.id;
+
+  if (id === 'priceBlendMode') {
+    recalculateRecommendation();
+  }
+
+  if (['inventoryStatusFilter', 'inventoryFormatFilter', 'inventorySort'].includes(id)) {
     renderInventoryManager();
   }
 });
@@ -1343,8 +1390,12 @@ if ('serviceWorker' in navigator) {
   });
 }
 
+/* =========================
+   INIT
+========================= */
+
 loadPrefs();
 toggleLookupPanel(true);
 renderInventory();
 renderInventoryManager();
-renderOpShopTracker();
+updateOpShopSummary(loadOpShops());
